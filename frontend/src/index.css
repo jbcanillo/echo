@@ -1,0 +1,313 @@
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.app-header h1 {
+  color: #2563eb;
+  margin-bottom: 10px;
+}
+
+.app-header p {
+  color: #6b7280;
+}
+
+.input-section {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.input-section h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #374151;
+}
+
+.audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.audio-controls button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.audio-controls button:not(:disabled):hover {
+  opacity: 0.9;
+}
+
+.audio-controls button[disabled] {
+  background-color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.audio-controls button.recording {
+  background-color: #dc2626;
+  color: white;
+}
+
+.audio-controls button:not(.recording) {
+  background-color: #2563eb;
+  color: white;
+}
+
+.audio-controls input[type="file"] {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.recording-timer {
+  font-family: monospace;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.audio-preview {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.audio-preview h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.text-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.text-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.text-options input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.character-count {
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.action-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.action-controls button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.action-controls button[disabled] {
+  background-color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.generate-button {
+  background-color: #059669;
+  color: white;
+}
+
+.generate-button:not(:disabled):hover {
+  background-color: #047857;
+}
+
+.reset-button {
+  background-color: #6b7280;
+  color: white;
+}
+
+.reset-button:not(:disabled):hover {
+  background-color: #4b5563;
+}
+
+.status-message {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 16px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-message.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.status-message.success {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.status-message .dismiss-button {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #9ca3af;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.status-message .dismiss-button:hover {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.output-section {
+  background: #f0f9ff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 24px;
+}
+
+.output-section h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #1e40af;
+}
+
+.audio-player {
+  margin-bottom: 16px;
+}
+
+.audio-player audio {
+  width: 100%;
+}
+
+.audio-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.audio-actions button,
+.audio-actions a {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+  transition: background-color 0.2s;
+}
+
+.audio-actions button {
+  background-color: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.audio-actions button:hover {
+  background-color: #1d4ed8;
+}
+
+.audio-actions a {
+  background-color: #059669;
+  color: white;
+  display: inline-block;
+}
+
+.audio-actions a:hover {
+  background-color: #047857;
+}
+
+.app-footer {
+  text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .app {
+    padding: 15px;
+  }
+  
+  .audio-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .audio-controls button {
+    width: 100%;
+  }
+  
+  .text-options {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .text-options label {
+    justify-content: flex-start;
+  }
+  
+  .action-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .action-controls button {
+    width: 100%;
+  }
+  
+  .audio-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .audio-actions button,
+  .audio-actions a {
+    width: 100%;
+  }
+}

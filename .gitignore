@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+/package-lock.json
+/yarn.lock
+/pnpm-lock.json
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+# Environment variables
+.env
+.env.*  # Ignore all environment files, keep only .env.example
+# Build outputs
+/dist
+/build
+# Docker
+Dockerfile.*.backup
+*.dockerignore
+# Logs
+logs
+*.log
+# Runtime data
+uploads/
+outputs/
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+# OS
+.DS_Store
+Thumbs.db
