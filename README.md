@@ -7,7 +7,7 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
 - Audio recording using MediaRecorder API
 - File upload support for pre-recorded audio
 - Text input with optional AI enhancement via OpenRouter
-- Voice cloning using Coqui TTS (YourTTS model)
+- Voice cloning using Kokoro TTS
 - Playback and download of generated audio
 - PWA capabilities: installable, offline support
 - Responsive, mobile-first design
@@ -41,7 +41,7 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
    cd backend
    npm install
    # Install Python dependencies
-   pip install TTS pydub openai
+   pip install kokoro pydub openai
    # Create .env file from .env.example and configure
    cp .env.example .env
    # Edit .env to add your OpenRouter API key (if desired)

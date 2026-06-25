@@ -2,7 +2,7 @@
 import os
 import sys
 import json
-from TTS.api import TTS
+from kokoro import Kokoro
 from pydub import AudioSegment
 import uuid
 import shutil
@@ -60,17 +60,17 @@ def main():
         output_path = f"{os.path.splitext(voice_sample_path)[0]}_output.wav"
         
         try:
-            # Lazy load TTS model
-            tts = None
-            def get_tts():
-                nonlocal tts
-                if tts is None:
-                    model_name = os.getenv("TTS_MODEL_NAME", "tts_models/multilingual/multi-dataset/yourtts")
-                    tts = TTS(model_name).to("cpu")
-                return tts
+            # Lazy load Kokoro model
+            kokoro = None
+            def get_kokoro():
+                nonlocal kokoro
+                if kokoro is None:
+                    model_name = os.getenv("TTS_MODEL_NAME", "kokoro")
+                    kokoro = Kokoro(model_name).to("cpu")
+                return kokoro
             
-            tts_model = get_tts()
-            tts_model.tts_to_file(
+            kokoro_model = get_kokoro()
+            kokoro_model.tts_to_file(
                 text=final_text,
                 speaker_wav=processed_input,
                 language="en",
@@ -90,9 +90,9 @@ def main():
                         os.remove(p)
                     except:
                         pass
-                    
+        
     except Exception as e:
         print(json.dumps({"error": f"Failed to process request: {str(e)}"}))
-
+        
 if __name__ == "__main__":
     main()
