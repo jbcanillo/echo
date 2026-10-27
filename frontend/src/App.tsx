@@ -1,13 +1,16 @@
 import React, { useState, useRef, useCallback } from 'react';
 import './index.css';
 
-const API_BASE = '/api';
+// Empty in dev and Docker (requests go through the Vite/nginx proxy); set VITE_BACKEND_URL to call the backend directly
+const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+const MAX_TEXT_LENGTH = 1000;
 
 function App() {
   const [audioSample, setAudioSample] = useState<File | null>(null);
   const [audioSampleUrl, setAudioSampleUrl] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [enhance, setEnhance] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -17,14 +20,15 @@ function App() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Start recording
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const mimeType = ['audio/webm', 'audio/ogg', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -35,20 +39,23 @@ function App() {
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const filename = `sample_${Date.now()}.wav`;
-        const file = new File([audioBlob], filename, { type: 'audio/wav' });
+        const type = mediaRecorder.mimeType || 'audio/webm';
+        const extension = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type });
+        const filename = `sample_${Date.now()}.${extension}`;
+        const file = new File([audioBlob], filename, { type });
         setAudioSample(file);
         setAudioSampleUrl(URL.createObjectURL(audioBlob));
         cleanup();
       };
 
-      mediaRecorder.start(10);
+      mediaRecorder.start();
       setIsRecording(true);
+      setError(null);
       setRecordingTime(0);
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime((t) => t + 10);
-      }, 10);
+        setRecordingTime((t) => t + 100);
+      }, 100);
     } catch (err) {
       console.error('Error accessing microphone:', err);
       setError('Unable to access microphone. Please check permissions.');
@@ -98,6 +105,10 @@ function App() {
       setError('Please enter text to synthesize');
       return;
     }
+    if (!consent) {
+      setError('Please confirm you have consent to clone this voice');
+      return;
+    }
 
     setIsGenerating(true);
     setError(null);
@@ -108,6 +119,7 @@ function App() {
     formData.append('voiceSample', audioSample);
     formData.append('text', text);
     formData.append('enhance', enhance.toString());
+    formData.append('consent', consent.toString());
 
     try {
       const response = await fetch(`${API_BASE}/api/clone-voice`, {
@@ -116,8 +128,8 @@ function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Voice cloning failed');
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || `Voice cloning failed (HTTP ${response.status})`);
       }
 
       // Get the audio blob URL
@@ -131,7 +143,7 @@ function App() {
     } finally {
       setIsGenerating(false);
     }
-  }, [audioSample, text, enhance, API_BASE]);
+  }, [audioSample, text, enhance, consent]);
 
   // Reset form
   const resetForm = useCallback(() => {
@@ -142,6 +154,7 @@ function App() {
     setAudioSampleUrl(null);
     setText('');
     setEnhance(false);
+    setConsent(false);
     setGeneratedAudioUrl(null);
     if (generatedAudioUrl) {
       URL.revokeObjectURL(generatedAudioUrl);
@@ -189,7 +202,7 @@ function App() {
             />
             {isRecording && (
               <div className="recording-timer">
-                Recording: {recordingTime / 1000}s
+                Recording: {(recordingTime / 1000).toFixed(1)}s
               </div>
             )}
           </div>
@@ -210,6 +223,7 @@ function App() {
             onChange={(e) => setText(e.target.value)}
             placeholder="Enter text to be spoken in the cloned voice"
             rows={4}
+            maxLength={MAX_TEXT_LENGTH}
             disabled={isGenerating}
           />
           <div className="text-options">
@@ -223,16 +237,28 @@ function App() {
               Enhance text via AI (OpenRouter)
             </label>
             <span className="character-count">
-              {text.length} characters
+              {text.length}/{MAX_TEXT_LENGTH} characters
             </span>
           </div>
+        </section>
+
+        <section className="input-section consent-section">
+          <label>
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              disabled={isGenerating}
+            />
+            This is my voice, or I have the speaker's permission to clone it.
+          </label>
         </section>
 
         {/* Action Controls */}
         <section className="action-controls">
           <button 
             onClick={generateVoice}
-            disabled={!audioSample || !text.trim() || isGenerating}
+            disabled={!audioSample || !text.trim() || !consent || isGenerating}
             className="generate-button"
           >
             {isGenerating ? 'Generating...' : 'Generate Voice'}

@@ -1,25 +1,30 @@
-FROM node:18-bullseye
+FROM node:20-bookworm-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy backend files
-COPY backend/package*.json ./
-RUN npm ci
-
-# Copy the rest of the backend
-COPY backend/ .
-
-# Install Python dependencies for voice cloning
-RUN apt-get update && apt-get install -y python3-pip ffmpeg && \
-    pip3 install TTS pydub openai && \
+# Python + ffmpeg for voice cloning (venv avoids Debian's externally-managed pip)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-venv ffmpeg && \
     rm -rf /var/lib/apt/lists/*
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Create directories for uploads and outputs
+# coqui-tts doesn't install PyTorch itself. The CPU-only build keeps the image several GB
+# smaller than the default CUDA build; torchcodec is needed for audio I/O with PyTorch 2.9+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+# Downloaded TTS models are cached here (mounted as a volume in docker-compose)
+ENV TTS_HOME=/app/models
 RUN mkdir -p uploads outputs models
 
-# Expose port
 EXPOSE 8000
 
-# Start the application
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
