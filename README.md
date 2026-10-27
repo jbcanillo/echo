@@ -40,6 +40,8 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
    cd backend
    npm install
    python3 -m venv .venv && source .venv/bin/activate
+   # PyTorch first (CPU build shown; see https://pytorch.org/get-started/locally/ for GPU)
+   pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec
    pip install -r requirements.txt
    cp .env.example .env   # optionally add OPENROUTER_API_KEY
    npm start              # http://localhost:8000

@@ -10,9 +10,10 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# CPU-only PyTorch keeps the image several GB smaller than the default CUDA build
+# coqui-tts doesn't install PyTorch itself. The CPU-only build keeps the image several GB
+# smaller than the default CUDA build; torchcodec is needed for audio I/O with PyTorch 2.9+
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio && \
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY package*.json ./
