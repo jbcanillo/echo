@@ -7,103 +7,100 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
 - Audio recording using MediaRecorder API
 - File upload support for pre-recorded audio
 - Text input with optional AI enhancement via OpenRouter
-- Voice cloning using Coqui TTS (YourTTS model)
+- Voice cloning using Coqui TTS (YourTTS model, via the maintained `coqui-tts` fork)
 - Playback and download of generated audio
-- PWA capabilities: installable, offline support
+- Consent confirmation before a voice can be cloned
+- PWA capabilities: installable, offline caching of the app shell
 - Responsive, mobile-first design
 
 ## Tech Stack
 
 ### Frontend
-- React 18+ with TypeScript
-- Vite for fast development and building
-- PWA plugin for offline capabilities
-- Axios for HTTP requests
+- React 18 with TypeScript
+- Vite 5 with `vite-plugin-pwa`
+- nginx in production (serves the app and proxies `/api` to the backend)
 
 ### Backend
-- Node.js with Express
-- Python script for voice cloning (using TTS, pydub, openai)
-- Docker for containerization
+- Node.js 20 with Express
+- A long-running Python worker (`voice_clone.py`) using `coqui-tts`, `pydub` and `openai`; the TTS model is loaded once and reused across requests
+- ffmpeg for decoding uploaded or recorded audio
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- Node.js (for development without Docker)
-- Python 3.8+ (for development without Docker)
+- Docker and Docker Compose, **or**
+- Node.js 20+, Python 3.10–3.12 and ffmpeg for local development
 - OpenRouter API key (optional, for text enhancement)
 
 ## Getting Started
 
 ### Development (without Docker)
 
-1. **Backend Setup**
+1. **Backend**
    ```bash
    cd backend
    npm install
-   # Install Python dependencies
-   pip install TTS pydub openai
-   # Create .env file from .env.example and configure
-   cp .env.example .env
-   # Edit .env to add your OpenRouter API key (if desired)
-   npm start
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env   # optionally add OPENROUTER_API_KEY
+   npm start              # http://localhost:8000
    ```
+   If Python isn't `python3` on your PATH, set `PYTHON_BIN` (e.g. `PYTHON_BIN=.venv/bin/python npm start`).
 
-2. **Frontend Setup**
+2. **Frontend**
    ```bash
    cd frontend
    npm install
-   cp .env.example .env  # We'll create this below
-   # Edit .env to set VITE_BACKEND_URL=http://localhost:8000
-   npm run dev
+   npm run dev            # http://localhost:5173
    ```
-
-3. **Environment Variables**
-   - Backend: See `.env.example`
-   - Frontend: Create a `.env` file in the frontend directory with:
-     ```
-     VITE_BACKEND_URL=http://localhost:8000
-     ```
+   The dev server proxies `/api` to `http://localhost:8000` (override with `VITE_PROXY_TARGET`).
+   To call the backend directly instead, set `VITE_BACKEND_URL` and allow the origin with the backend's `CORS_ORIGIN`.
 
 ### Production (with Docker)
 
-1. **Configure Environment**
-   - Copy `.env.example` to `.env` in the backend directory and fill in the values.
-   - The frontend uses the `VITE_BACKEND_URL` environment variable, which is set in the docker-compose.yml.
+```bash
+cp backend/.env.example backend/.env   # optional; edit as needed
+docker compose up --build
+```
 
-2. **Build and Run**
-   ```bash
-   docker-compose up --build
-   ```
+- App: http://localhost:5173 (nginx, which proxies `/api` to the backend)
+- Backend API: http://localhost:8000
+- Downloaded TTS models are kept in the `tts-models` volume, so only the first run downloads them.
 
-3. **Access the Application**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
+## Configuration (backend `.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` / `HOST` | `8000` / `0.0.0.0` | Listen address |
+| `CORS_ORIGIN` | *(all)* | Comma-separated allowed origins |
+| `OPENROUTER_API_KEY` | | Enables the "Enhance text" option |
+| `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | Model used for enhancement |
+| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/yourtts` | Coqui TTS model |
+| `MAX_UPLOAD_MB` | `20` | Maximum voice sample size |
+| `MAX_TEXT_LENGTH` | `1000` | Maximum text length |
+| `JOB_TIMEOUT_SECONDS` | `600` | Per-request synthesis timeout (worker is restarted on timeout) |
+| `RATE_LIMIT_PER_MINUTE` | `5` | Clone requests per client IP per minute |
+| `PYTHON_BIN` | `python3` | Python interpreter for the worker |
 
 ## Project Structure
 
 ```
 echo/
 ├── backend/
-│   ├── index.js              # Node.js Express server
-│   ├── voice_clone.py        # Python voice cloning script
+│   ├── index.js              # Express server + Python worker management
+│   ├── voice_clone.py        # Long-running voice cloning worker (JSON lines over stdin/stdout)
+│   ├── requirements.txt      # Python dependencies
 │   ├── package.json
 │   ├── Dockerfile
-│   ├── .env.example
-│   ├── uploads/              # Audio sample uploads
-│   ├── outputs/              # Generated audio files
-│   └── models/               # TTS models (downloaded at runtime)
+│   └── .env.example
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx           # Main React component
 │   │   ├── main.tsx          # Entry point
 │   │   └── index.css         # Styles
-│   ├── public/
-│   │   ├── pwa-192x192.png   # PWA icons
-│   │   └── pwa-512x512.png
-│   ├── package.json
-│   ├── tsconfig.json
+│   ├── public/               # PWA icons
+│   ├── nginx.conf            # Production nginx config (SPA + /api proxy)
 │   ├── vite.config.ts
-│   ├── index.html
+│   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml
 └── README.md
@@ -113,35 +110,35 @@ echo/
 
 ### Health Check
 - **GET** `/api/health`
-- Returns: `{ status: "ok" }`
+- Returns: `{ "status": "ok" }`
 
 ### Voice Cloning
-- **POST** `/api/clone-voice`
-- Form Data:
-  - `voiceSample`: audio file (wav, mp3, etc.)
-  - `text`: text to synthesize
-  - `enhance`: boolean (optional, default false)
-- Returns: audio/wav file (cloned voice)
+- **POST** `/api/clone-voice` (multipart form data)
+  - `voiceSample`: audio file (wav, mp3, m4a, ogg, webm, flac, …)
+  - `text`: text to synthesize (max `MAX_TEXT_LENGTH` characters)
+  - `consent`: must be `true` — confirms the speaker agreed to having their voice cloned
+  - `enhance`: `true` to rewrite the text via OpenRouter first (optional)
+- Returns: `audio/wav` on success, or `{ "error": "..." }` with status 400/429/500
 
 ## PWA Features
 
 - Installable on mobile and desktop
-- Offline caching of static assets
-- Background sync (future enhancement)
-- Push notifications (future enhancement)
+- Offline caching of the app shell (voice generation itself needs the backend)
 
 ## Notes
 
 - The first-time voice cloning may take longer as the TTS model is downloaded.
-- Generated audio files are temporarily stored and cleaned up after sending.
+- Uploaded samples and generated audio are temporary and deleted after each request.
+- Only clone voices you have permission to use.
 - For production, consider using a cloud storage service for audio samples and generated audio.
 - The OpenRouter API key is required only if you want to use the text enhancement feature.
 
 ## Troubleshooting
 
 - **Microphone access not working**: Ensure the site is served over HTTPS (localhost is exempt) and that microphone permissions are granted.
-- **Voice cloning fails**: Check the backend logs for Python errors. Ensure the TTS model can be downloaded (internet access required).
-- **CORS issues**: The backend is configured to accept requests from any origin in development. Adjust the CORS middleware in `index.js` for production.
+- **Voice cloning fails**: Check the backend logs (worker output is prefixed with `[voice_clone]`). Ensure the TTS model can be downloaded (internet access required) and ffmpeg is installed.
+- **Requests time out on first use**: The first request downloads the model; raise `JOB_TIMEOUT_SECONDS` on slow connections.
+- **CORS issues**: Only relevant when `VITE_BACKEND_URL` points at the backend directly; set `CORS_ORIGIN` to the frontend's origin.
 
 ## License
 

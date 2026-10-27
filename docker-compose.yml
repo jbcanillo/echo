@@ -1,26 +1,23 @@
-version: '3.8'
 services:
   frontend:
     build: ./frontend
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "5173:80"
     depends_on:
       - backend
   backend:
     build: ./backend
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-      - ./uploads:/app/uploads
-      - ./outputs:/app/outputs
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
       - PORT=8000
       - HOST=0.0.0.0
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - TTS_MODEL_NAME=${TTS_MODEL_NAME}
-    env_file:
-      - ./backend/.env
+    volumes:
+      # Cache downloaded TTS models between restarts
+      - tts-models:/app/models
+
+volumes:
+  tts-models:

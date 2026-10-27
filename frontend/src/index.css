@@ -311,3 +311,9 @@
     width: 100%;
   }
 }
+.consent-section label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: #374151;
+}

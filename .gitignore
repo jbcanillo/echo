@@ -1,27 +1,23 @@
 # Dependencies
 node_modules/
-/package-lock.json
-/yarn.lock
-/pnpm-lock.json
 # Python
 __pycache__
 *.py[cod]
 *$py.class
-# Environment variables
+# Environment variables (keep .env.example)
 .env
-.env.*  # Ignore all environment files, keep only .env.example
+.env.*
+!.env.example
 # Build outputs
-/dist
-/build
-# Docker
-Dockerfile.*.backup
-*.dockerignore
+dist/
+build/
 # Logs
 logs
 *.log
 # Runtime data
 uploads/
 outputs/
+backend/models/
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,4 @@
+# Maintained community fork of Coqui TTS (same `TTS` import path)
+coqui-tts>=0.24,<1
+pydub>=0.25
+openai>=1.0
