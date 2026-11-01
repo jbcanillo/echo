@@ -76,7 +76,7 @@ docker compose up --build
 | `CORS_ORIGIN` | *(all)* | Comma-separated allowed origins |
 | `OPENROUTER_API_KEY` | | Enables the "Enhance text" option |
 | `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | Model used for enhancement |
-| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/yourtts` | Coqui TTS model |
+| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Coqui TTS model |
 | `MAX_UPLOAD_MB` | `20` | Maximum voice sample size |
 | `MAX_TEXT_LENGTH` | `1000` | Maximum text length |
 | `JOB_TIMEOUT_SECONDS` | `600` | Per-request synthesis timeout (worker is restarted on timeout) |

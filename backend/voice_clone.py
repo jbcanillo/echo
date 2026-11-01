@@ -25,7 +25,7 @@ def get_tts():
     global _tts
     if _tts is None:
         from TTS.api import TTS
-        model_name = os.getenv("TTS_MODEL_NAME") or "tts_models/multilingual/multi-dataset/yourtts"
+        model_name = os.getenv("TTS_MODEL_NAME") or "tts_models/multilingual/multi-dataset/your_tts"
         _tts = TTS(model_name).to("cpu")
     return _tts
 

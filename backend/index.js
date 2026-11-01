@@ -157,9 +157,12 @@ app.post('/api/clone-voice', cloneLimiter, upload.single('voiceSample'), async (
 
   const inputPath = req.file.path;
   const outputPath = path.join(OUTPUT_DIR, path.parse(req.file.filename).name + '_output.wav');
+  // Converted copy written by voice_clone.py; normally removed there, but not if the worker is killed
+  const processedPath = path.join(UPLOAD_DIR, path.parse(req.file.filename).name + '_processed.wav');
   let responded = false;
   res.on('close', () => {
     removeFile(inputPath);
+    removeFile(processedPath);
     if (!responded) removeFile(outputPath);
   });
 
