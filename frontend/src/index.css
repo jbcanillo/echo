@@ -317,3 +317,34 @@
   align-items: flex-start;
   color: #374151;
 }
+
+.avatar {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.avatar-stage {
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #dbeafe 0%, #f9fafb 100%);
+}
+
+.avatar-failed .avatar-stage {
+  display: none;
+}
+
+.avatar-status {
+  min-height: 1.5em;
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.avatar-canvas {
+  width: 100%;
+  height: 100%;
+}

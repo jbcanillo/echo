@@ -13,7 +13,22 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         workbox: {
           // Never answer API requests from the service worker
-          navigateFallbackDenylist: [/^\/api/]
+          navigateFallbackDenylist: [/^\/api/],
+          // Include the lip-sync worklet and viseme model so the avatar works offline
+          globPatterns: ['**/*.{js,mjs,css,html,bin}'],
+          // Draco decoders are bundled by three.js but never loaded (the model uses Meshopt)
+          globIgnores: ['**/draco_*'],
+          // The avatar model is large, so cache it on first use instead of precaching it
+          runtimeCaching: [
+            {
+              urlPattern: /\/avatars\/.*\.glb$/,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'avatars',
+                expiration: { maxEntries: 5 }
+              }
+            }
+          ]
         },
         manifest: {
           name: 'Echo',
