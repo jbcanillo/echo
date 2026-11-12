@@ -10,6 +10,7 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
 - Voice cloning using Coqui TTS (YourTTS model, via the maintained `coqui-tts` fork)
 - Playback and download of generated audio
 - Consent confirmation before a voice can be cloned
+- Animated 3D avatar that listens while you record, thinks while the voice is generated and lip-syncs to the result
 - PWA capabilities: installable, offline caching of the app shell
 - Responsive, mobile-first design
 
@@ -18,6 +19,7 @@ A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
 ### Frontend
 - React 18 with TypeScript
 - Vite 5 with `vite-plugin-pwa`
+- [TalkingHead](https://github.com/met4citizen/TalkingHead) (three.js) for the 3D avatar, with [HeadAudio](https://github.com/met4citizen/HeadAudio) for audio-driven lip-sync
 - nginx in production (serves the app and proxies `/api` to the backend)
 
 ### Backend
@@ -97,9 +99,10 @@ echo/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx           # Main React component
+│   │   ├── Avatar.tsx        # 3D avatar (TalkingHead + HeadAudio lip-sync)
 │   │   ├── main.tsx          # Entry point
 │   │   └── index.css         # Styles
-│   ├── public/               # PWA icons
+│   ├── public/               # PWA icons, avatars/generic.glb
 │   ├── nginx.conf            # Production nginx config (SPA + /api proxy)
 │   ├── vite.config.ts
 │   ├── package.json
@@ -121,6 +124,29 @@ echo/
   - `consent`: must be `true` — confirms the speaker agreed to having their voice cloned
   - `enhance`: `true` to rewrite the text via OpenRouter first (optional)
 - Returns: `audio/wav` on success, or `{ "error": "..." }` with status 400/429/500
+
+## Avatar
+
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser:
+
+- **Listening** while you record (it follows the microphone)
+- **Thinking** while the voice is generated
+- **Speaking** when the generated audio plays: the audio is analysed live, so the lips follow whatever the player plays, including pause and seek
+
+It is loaded as a separate chunk after the page is shown. If WebGL isn't available the avatar is hidden and the rest of the app works as before.
+
+### Replacing the model
+
+The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB. To use your own:
+
+1. Create a GLB with a Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes (see [TalkingHead, Appendix A](https://github.com/met4citizen/TalkingHead#appendix-a-create-your-own-3d-avatar)).
+2. Compress it (textures to WebP, geometry with Meshopt; avoid `optimize`/`simplify`, which can break blend shapes):
+   ```bash
+   npx @gltf-transform/cli resize in.glb a.glb --width 1024 --height 1024
+   npx @gltf-transform/cli webp a.glb b.glb
+   npx @gltf-transform/cli meshopt b.glb generic.glb
+   ```
+3. Replace `frontend/public/avatars/generic.glb`, or change `AVATAR_URL` / `AVATAR_OPTIONS` (body type, mood, camera view) at the top of `Avatar.tsx`.
 
 ## PWA Features
 

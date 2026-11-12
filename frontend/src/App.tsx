@@ -1,5 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useRef, useCallback } from 'react';
 import './index.css';
+
+// Loaded separately so the 3D engine doesn't slow down the first paint
+const Avatar = lazy(() => import('./Avatar'));
 
 // Empty in dev and Docker (requests go through the Vite/nginx proxy); set VITE_BACKEND_URL to call the backend directly
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
@@ -21,7 +24,14 @@ function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
+
+  const setAudioRef = useCallback((element: HTMLAudioElement | null) => {
+    audioRef.current = element;
+    setAudioElement(element);
+  }, []);
 
   // Start recording
   const startRecording = useCallback(async () => {
@@ -50,6 +60,7 @@ function App() {
       };
 
       mediaRecorder.start();
+      setMicStream(stream);
       setIsRecording(true);
       setError(null);
       setRecordingTime(0);
@@ -72,6 +83,7 @@ function App() {
   // Cleanup recording
   const cleanup = useCallback(() => {
     setIsRecording(false);
+    setMicStream(null);
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
@@ -183,6 +195,10 @@ function App() {
       </header>
 
       <main className="app-main">
+        <Suspense fallback={null}>
+          <Avatar micStream={micStream} isThinking={isGenerating} audioElement={audioElement} />
+        </Suspense>
+
         {/* Audio Input Section */}
         <section className="input-section">
           <h2>Audio Sample</h2>
@@ -293,7 +309,7 @@ function App() {
             <h2>Generated Voice</h2>
             <div className="audio-player">
               <audio 
-                ref={audioRef}
+                ref={setAudioRef}
                 controls
                 src={generatedAudioUrl}
                 autoPlay
