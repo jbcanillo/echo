@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TalkingHead } from '@met4citizen/talkinghead';
 import { HeadAudio } from '@met4citizen/headaudio/dist/headaudio.min.mjs';
 import headWorkletUrl from '@met4citizen/headaudio/dist/headworklet.min.mjs?url';
@@ -11,6 +11,18 @@ const AVATAR_OPTIONS = { body: 'F', avatarMood: 'neutral', lipsyncLang: 'en' } a
 
 // HeadAudio needs ~100 ms to detect a viseme, so the audible speech is delayed to match the lips
 const LIPSYNC_DELAY_SECONDS = 0.1;
+
+// Decorative waveform behind the avatar: fixed pseudo-random heights, gold in the middle and
+// emerald at the edges (--c is the closeness to the center), each bar with its own pace
+const WAVE_BARS = Array.from({ length: 61 }, (_, i) => {
+  const center = 1 - Math.abs(i - 30) / 30;
+  const noise = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+  return {
+    '--h': (0.25 + 0.75 * noise) * (0.35 + 0.65 * Math.sqrt(center)),
+    '--c': center,
+    '--d': `${(0.35 + noise * 0.6).toFixed(2)}s`
+  } as React.CSSProperties;
+});
 
 // An <audio> element can only ever be wired into one Web Audio source node
 const mediaSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
@@ -192,16 +204,35 @@ function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
     };
   }, [head, audioElement]);
 
+  let state = 'idle';
   let status = '';
-  if (failed) status = 'Avatar unavailable on this device';
-  else if (!head) status = `Loading avatar… ${progress}%`;
-  else if (micStream) status = 'Listening…';
-  else if (isThinking) status = 'Thinking…';
-  else if (isSpeaking) status = 'Speaking…';
+  if (failed) {
+    state = 'offline';
+    status = 'Avatar unavailable on this device';
+  } else if (!head) {
+    state = 'loading';
+    status = `Loading avatar… ${progress}%`;
+  } else if (micStream) {
+    state = 'listening';
+    status = 'Listening…';
+  } else if (isThinking) {
+    state = 'thinking';
+    status = 'Thinking…';
+  } else if (isSpeaking) {
+    state = 'speaking';
+    status = 'Speaking…';
+  }
 
   return (
-    <section className={`avatar${failed ? ' avatar-failed' : ''}`} aria-label="Avatar">
-      <div ref={containerRef} className="avatar-stage" />
+    <section className={`avatar${failed ? ' avatar-failed' : ''}`} data-state={state} aria-label="Avatar">
+      <div className="avatar-wave" aria-hidden="true">
+        {WAVE_BARS.map((bar, i) => (
+          <span key={i} style={bar} />
+        ))}
+      </div>
+      <div className="avatar-frame">
+        <div ref={containerRef} className="avatar-stage" />
+      </div>
       <p className="avatar-status" role="status">{status}</p>
     </section>
   );
