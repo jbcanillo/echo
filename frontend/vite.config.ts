@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
           // Never answer API requests from the service worker
           navigateFallbackDenylist: [/^\/api/],
           // Include the lip-sync worklet and viseme model so the avatar works offline
-          globPatterns: ['**/*.{js,mjs,css,html,bin}'],
+          globPatterns: ['**/*.{js,mjs,css,html,bin,woff2,png,webp}'],
           // Draco decoders are bundled by three.js but never loaded (the model uses Meshopt)
           globIgnores: ['**/draco_*'],
           // The avatar model is large, so cache it on first use instead of precaching it
@@ -34,7 +34,8 @@ export default defineConfig(({ mode }) => {
           name: 'Echo',
           short_name: 'Echo',
           description: 'Voice Cloning PWA',
-          theme_color: '#ffffff',
+          theme_color: '#02080d',
+          background_color: '#02080d',
           icons: [
             {
               src: 'pwa-192x192.png',
@@ -45,6 +46,12 @@ export default defineConfig(({ mode }) => {
               src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png'
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }

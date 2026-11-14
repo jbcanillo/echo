@@ -190,8 +190,11 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Echo</h1>
-        <p>Voice Cloning PWA</p>
+        <img className="app-logo" src={`${import.meta.env.BASE_URL}logo.webp`} alt="" width={56} height={56} />
+        <div>
+          <h1>Echo</h1>
+          <p>Voice cloning and synth agent</p>
+        </div>
       </header>
 
       <main className="app-main">
@@ -276,6 +279,7 @@ function App() {
             onClick={generateVoice}
             disabled={!audioSample || !text.trim() || !consent || isGenerating}
             className="generate-button"
+            aria-busy={isGenerating}
           >
             {isGenerating ? 'Generating...' : 'Generate Voice'}
           </button>

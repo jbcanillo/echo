@@ -1,5 +1,7 @@
 # Echo - Voice Cloning PWA
 
+![Echo: voice cloning and synth agent](banner.png)
+
 A web-based, mobile-first PWA for cloning user voice and synthesizing speech.
 
 ## Features
@@ -102,7 +104,7 @@ echo/
 │   │   ├── Avatar.tsx        # 3D avatar (TalkingHead + HeadAudio lip-sync)
 │   │   ├── main.tsx          # Entry point
 │   │   └── index.css         # Styles
-│   ├── public/               # PWA icons, avatars/generic.glb
+│   ├── public/               # PWA icons, logo, avatars/generic.glb
 │   ├── nginx.conf            # Production nginx config (SPA + /api proxy)
 │   ├── vite.config.ts
 │   ├── package.json
@@ -124,6 +126,10 @@ echo/
   - `consent`: must be `true` — confirms the speaker agreed to having their voice cloned
   - `enhance`: `true` to rewrite the text via OpenRouter first (optional)
 - Returns: `audio/wav` on success, or `{ "error": "..." }` with status 400/429/500
+
+## Look and feel
+
+The interface is a dark cyberpunk HUD built from the logo's palette: near-black teal, emerald, gold and the ember orange of the hair (used for recording and errors). All colors are CSS variables at the top of `frontend/src/index.css`, so the whole theme can be retuned in one place. Fonts (Orbitron, Rajdhani, Share Tech Mono) are bundled via `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
 
 ## Avatar
 
