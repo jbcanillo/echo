@@ -131,10 +131,10 @@ RATE_LIMIT_PER_MINUTE=5
 ### 1 — Configure (Optional)
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
-Echo runs without a `.env` file. Open it only to change a default, for example to enable text enhancement:
+Echo has **one** `.env` file, at the repository root. Docker Compose, the backend and the frontend all read it. It is optional: Echo runs without it. Open it only to change a default, for example to enable text enhancement:
 
 ```env
 # Free to create at https://openrouter.ai → Keys → Create Key
@@ -192,7 +192,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec
 pip install -r requirements.txt
 
-cp .env.example .env
+cd .. && cp .env.example .env && cd backend   # the shared .env lives at the repository root
 PYTHON_BIN=.venv/bin/python npm start    # http://localhost:8000
 ```
 
@@ -206,7 +206,7 @@ npm install
 npm run dev                              # http://localhost:5173
 ```
 
-The dev server proxies `/api` to `http://localhost:8000` (override with `VITE_PROXY_TARGET`). To call the backend directly instead, set `VITE_BACKEND_URL` and allow the frontend's origin with `CORS_ORIGIN` on the backend.
+The dev server reads the same root `.env` and proxies `/api` to `http://localhost:$PORT` (override with `VITE_PROXY_TARGET`). To call the backend directly instead, set `VITE_BACKEND_URL` and allow the frontend's origin with `CORS_ORIGIN`.
 
 `npm run build` typechecks with `tsc` and produces the production bundle in `frontend/dist`.
 
@@ -327,7 +327,11 @@ Errors return JSON: `{ "error": "..." }`.
 
 ## Configuration Reference
 
-### Backend (`backend/.env`)
+All settings live in a single `.env` file at the repository root (copy `.env.example`). Values already set in your shell take precedence over the file.
+
+> **Upgrading:** earlier versions read `backend/.env` and `frontend/.env`, which are now ignored. Move your values into the root file, for example `mv backend/.env .env`, and delete `frontend/.env`.
+
+### Backend
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -344,12 +348,14 @@ Errors return JSON: `{ "error": "..." }`.
 | `PYTHON_BIN` | `python3` | Python interpreter used for the worker |
 | `TTS_HOME` | *(Coqui default)* | Where voice models are cached. Set to `/app/models` in Docker |
 
-### Frontend (`frontend/.env`)
+### Frontend
+
+Only variables starting with `VITE_` are exposed to the browser, so secrets such as `OPENROUTER_API_KEY` never reach the bundle. These two apply to `npm run dev` and local builds; the Docker image is built without the root `.env` and always uses the nginx `/api` proxy.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VITE_BACKEND_URL` | *(empty)* | Empty sends `/api` through the dev server or nginx proxy. Set to call the backend directly |
-| `VITE_PROXY_TARGET` | `http://localhost:8000` | Where the Vite dev server proxies `/api` |
+| `VITE_PROXY_TARGET` | `http://localhost:$PORT` | Where the Vite dev server proxies `/api` |
 
 > **Keep these in sync.** The text counter in the UI is fixed at 1000 characters (`MAX_TEXT_LENGTH` in `frontend/src/App.tsx`), and the bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_TEXT_LENGTH` or `MAX_UPLOAD_MB` on the backend, change them there too.
 
@@ -402,7 +408,7 @@ On a slow connection, raise `JOB_TIMEOUT_SECONDS`. If you raise it above 600, al
 
 **`Voice cloning failed` with `KeyError: 'yourtts'`**
 
-Your `backend/.env` was copied from an older `.env.example` and still has the wrong model ID. Set it to the correct one, or delete the line to use the default:
+Your `.env` was copied from an older `.env.example` and still has the wrong model ID. Set it to the correct one, or delete the line to use the default:
 
 ```env
 TTS_MODEL_NAME=tts_models/multilingual/multi-dataset/your_tts
@@ -469,8 +475,7 @@ echo/
 │   ├── voice_clone.py        # Long-running voice cloning worker (JSON lines over stdin/stdout)
 │   ├── requirements.txt      # Python dependencies
 │   ├── package.json
-│   ├── Dockerfile
-│   └── .env.example
+│   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx           # Main React component
@@ -482,6 +487,7 @@ echo/
 │   ├── vite.config.ts
 │   ├── package.json
 │   └── Dockerfile
+├── .env.example              # Single configuration file for Docker, backend and frontend
 ├── banner.png
 ├── docker-compose.yml
 └── README.md
@@ -501,7 +507,7 @@ echo/
 
 ### Using Another Model
 
-Set `TTS_MODEL_NAME` in `backend/.env` to another Coqui voice-cloning model, for example `tts_models/multilingual/multi-dataset/xtts_v2`. Only YourTTS has been tested with Echo, and `xtts_v2` is released under the non-commercial CPML license.
+Set `TTS_MODEL_NAME` in `.env` to another Coqui voice-cloning model, for example `tts_models/multilingual/multi-dataset/xtts_v2`. Only YourTTS has been tested with Echo, and `xtts_v2` is released under the non-commercial CPML license.
 
 ---
 

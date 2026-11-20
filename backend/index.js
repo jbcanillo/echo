@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { spawn } = require('child_process');
-require('dotenv').config();
+// One .env at the repository root is shared with Docker Compose and the frontend
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = parseInt(process.env.PORT) || 8000;

@@ -1,11 +1,15 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  // One .env at the repository root is shared with the backend and Docker Compose
+  const envDir = fileURLToPath(new URL('..', import.meta.url));
+  const env = loadEnv(mode, envDir, '');
 
   return {
+    envDir,
     plugins: [
       react(),
       VitePWA({
@@ -62,7 +66,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       // Forward API calls to the backend during development
       proxy: {
-        '/api': env.VITE_PROXY_TARGET || 'http://localhost:8000'
+        '/api': env.VITE_PROXY_TARGET || `http://localhost:${env.PORT || 8000}`
       }
     },
     preview: {
