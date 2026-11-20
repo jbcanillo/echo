@@ -38,8 +38,8 @@ export default defineConfig(({ mode }) => {
           name: 'Echo',
           short_name: 'Echo',
           description: 'Voice Cloning PWA',
-          theme_color: '#02080d',
-          background_color: '#02080d',
+          theme_color: '#0b0f12',
+          background_color: '#0b0f12',
           icons: [
             {
               src: 'pwa-192x192.png',

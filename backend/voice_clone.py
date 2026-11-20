@@ -4,7 +4,8 @@
 Reads one JSON job per line on stdin and writes one JSON result per line on
 stdout, so the TTS model is loaded once instead of on every request.
 
-Job:    {"id", "voice_sample_path", "output_path", "text", "enhance", "openrouter_key"}
+Job:    {"id", "voice_sample_path", "output_path", "text", "language", "speed", "expressiveness",
+         "variation", "enhance", "openrouter_key", "openrouter_model"}   (the last three are optional)
 Result: {"id", "output_path"} or {"id", "error"}
 """
 import json
@@ -38,13 +39,13 @@ def preprocess_audio(input_path, output_path):
     return output_path
 
 
-def enhance_text(text, openrouter_key):
+def enhance_text(text, openrouter_key, model=None):
     """Rewrite text to sound more natural when spoken; fall back to the original on failure."""
     try:
         import openai
         client = openai.OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
         completion = client.chat.completions.create(
-            model=os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o-mini",
+            model=model or os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -62,13 +63,40 @@ def enhance_text(text, openrouter_key):
         return text
 
 
+def apply_synth_settings(tts, job):
+    """Tune the voice model for one job and return the values to restore afterwards.
+
+    YourTTS is a VITS model: speed maps to length_scale (its inverse), expressiveness to the
+    inference noise scale and variation to the duration noise scale.
+    """
+    model = getattr(getattr(tts, "synthesizer", None), "tts_model", None)
+    previous = {}
+    if model is None:
+        return previous
+    speed = job.get("speed")
+    wanted = {
+        "length_scale": (1.0 / speed) if speed else None,
+        "inference_noise_scale": job.get("expressiveness"),
+        "inference_noise_scale_dp": job.get("variation"),
+    }
+    for attr, value in wanted.items():
+        if value is None:
+            continue
+        if not hasattr(model, attr):
+            print(f"Voice model has no '{attr}' setting; ignoring it", file=sys.stderr)
+            continue
+        previous[attr] = getattr(model, attr)
+        setattr(model, attr, value)
+    return previous
+
+
 def process(job):
     voice_sample_path = job["voice_sample_path"]
     output_path = job["output_path"]
     text = job["text"]
 
     if job.get("enhance") and job.get("openrouter_key"):
-        text = enhance_text(text, job["openrouter_key"])
+        text = enhance_text(text, job["openrouter_key"], job.get("openrouter_model"))
 
     processed_input = f"{os.path.splitext(voice_sample_path)[0]}_processed.wav"
     try:
@@ -77,8 +105,11 @@ def process(job):
         except Exception as e:
             return {"error": f"Audio preprocessing failed: {e}"}
 
+        previous = {}
         try:
-            get_tts().tts_to_file(
+            tts = get_tts()
+            previous = apply_synth_settings(tts, job)
+            tts.tts_to_file(
                 text=text,
                 speaker_wav=processed_input,
                 language=job.get("language") or "en",
@@ -86,6 +117,11 @@ def process(job):
             )
         except Exception as e:
             return {"error": f"Voice cloning failed: {e}"}
+        finally:
+            # The model is shared between requests, so put its settings back
+            model = getattr(getattr(_tts, "synthesizer", None), "tts_model", None)
+            for attr, value in previous.items():
+                setattr(model, attr, value)
 
         return {"output_path": output_path}
     finally:

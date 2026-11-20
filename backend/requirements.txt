@@ -2,4 +2,6 @@
 # PyTorch is not pulled in automatically; install torch, torchaudio and torchcodec first (see README).
 coqui-tts>=0.24,<1
 pydub>=0.25
+# Imported by TTS dependencies but not declared by them
+six
 openai>=1.0

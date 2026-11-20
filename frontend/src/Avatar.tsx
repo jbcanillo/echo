@@ -4,10 +4,41 @@ import { HeadAudio } from '@met4citizen/headaudio/dist/headaudio.min.mjs';
 import headWorkletUrl from '@met4citizen/headaudio/dist/headworklet.min.mjs?url';
 import visemeModelUrl from '@met4citizen/headaudio/dist/model-en-mixed.bin?url';
 
-// Replace this file (or point to another GLB) to change the avatar. The model needs a
+export type AvatarGender = 'F' | 'M';
+
+// One GLB per gender. Replace these files (or point to other GLBs) to change the avatars. A model needs a
 // Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes; see the TalkingHead README.
-const AVATAR_URL = `${import.meta.env.BASE_URL}avatars/generic.glb`;
-const AVATAR_OPTIONS = { body: 'F', avatarMood: 'neutral', lipsyncLang: 'en' } as const;
+// If male.glb is missing, the male option falls back to generic.glb with the male body type.
+const MODEL_URLS: Record<AvatarGender, string> = {
+  F: `${import.meta.env.BASE_URL}avatars/generic.glb`,
+  M: `${import.meta.env.BASE_URL}avatars/male.glb`
+};
+
+// The dev server and nginx answer unknown paths with index.html, so check for the GLB magic number
+async function isGlb(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { headers: { Range: 'bytes=0-3' } });
+    const reader = response.body?.getReader();
+    if (!response.ok || !reader) return false;
+    const { value } = await reader.read();
+    reader.cancel().catch(() => undefined);
+    return !!value && String.fromCharCode(...value.slice(0, 4)) === 'glTF';
+  } catch {
+    return false;
+  }
+}
+
+/** Shows the avatar for a gender and resolves to true when it had to use the default model instead */
+async function showModel(head: TalkingHead, gender: AvatarGender, onProgress: (event: ProgressEvent) => void): Promise<boolean> {
+  let url = MODEL_URLS[gender];
+  let usedDefault = false;
+  if (gender === 'M' && !(await isGlb(url))) {
+    url = MODEL_URLS.F;
+    usedDefault = true;
+  }
+  await head.showAvatar({ url, body: gender, avatarMood: 'neutral', lipsyncLang: 'en' }, onProgress);
+  return usedDefault;
+}
 
 // HeadAudio needs ~100 ms to detect a viseme, so the audible speech is delayed to match the lips
 const LIPSYNC_DELAY_SECONDS = 0.1;
@@ -34,14 +65,22 @@ interface AvatarProps {
   isThinking: boolean;
   /** The player for the generated voice; the avatar lip-syncs to whatever it plays */
   audioElement: HTMLAudioElement | null;
+  /** Which avatar to show; changing it swaps the model without rebuilding the audio setup */
+  gender: AvatarGender;
 }
 
-function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
+function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [head, setHead] = useState<TalkingHead | null>(null);
   const [progress, setProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [usedDefault, setUsedDefault] = useState(false);
+  // The gender the shown model was loaded for, and the one most recently asked for
+  const loadedGenderRef = useRef<AvatarGender | null>(null);
+  const wantedGenderRef = useRef(gender);
+  wantedGenderRef.current = gender;
 
   // Load the avatar and the audio-driven lip-sync
   useEffect(() => {
@@ -73,42 +112,78 @@ function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
           cameraRotateEnable: false, // keep touch scrolling working over the avatar
           modelPixelRatio: Math.min(window.devicePixelRatio || 1, 2)
         });
-        await instance.showAvatar({ url: AVATAR_URL, ...AVATAR_OPTIONS }, (event) => {
+        const initialGender = wantedGenderRef.current;
+        const fellBack = await showModel(instance, initialGender, (event) => {
           if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
         });
-
-        const { audioCtx } = instance;
-        await audioCtx.audioWorklet.addModule(headWorkletUrl);
-        const headAudio = new HeadAudio(audioCtx, {
-          parameterData: { vadGateActiveDb: -40, vadGateInactiveDb: -60 }
-        });
-        await headAudio.loadModel(visemeModelUrl);
-        if (disposed) return;
+        loadedGenderRef.current = initialGender;
+        setUsedDefault(fellBack);
 
         const head = instance;
-        head.audioSpeechGainNode.connect(headAudio);
-        const delay = new DelayNode(audioCtx, { delayTime: LIPSYNC_DELAY_SECONDS });
-        head.audioSpeechGainNode.disconnect(head.audioReverbNode);
-        head.audioSpeechGainNode.connect(delay);
-        delay.connect(head.audioReverbNode);
+        const { audioCtx } = head;
+        if (disposed) return;
 
-        headAudio.onvalue = (key, value) => {
-          const target = head.mtAvatar[key];
-          if (target) Object.assign(target, { newvalue: value, needsUpdate: true });
-        };
-        head.opt.update = headAudio.update.bind(headAudio);
+        // Precise viseme lip-sync needs an AudioWorklet, which browsers only allow in secure contexts
+        // (HTTPS or localhost). Anywhere else, or if setup fails, fall back to a simple loudness-driven mouth.
+        let preciseLipSync = false;
+        if (audioCtx.audioWorklet) {
+          try {
+            await audioCtx.audioWorklet.addModule(headWorkletUrl);
+            const headAudio = new HeadAudio(audioCtx, {
+              parameterData: { vadGateActiveDb: -40, vadGateInactiveDb: -60 }
+            });
+            await headAudio.loadModel(visemeModelUrl);
+            if (disposed) return;
 
-        // Look at the viewer and gesture when a new sentence starts
-        let lastEnded = 0;
-        headAudio.onended = () => {
-          lastEnded = Date.now();
-        };
-        headAudio.onstarted = () => {
-          if (Date.now() - lastEnded > 150) {
-            head.lookAtCamera(500);
-            head.speakWithHands();
+            head.audioSpeechGainNode.connect(headAudio);
+            const delay = new DelayNode(audioCtx, { delayTime: LIPSYNC_DELAY_SECONDS });
+            head.audioSpeechGainNode.disconnect(head.audioReverbNode);
+            head.audioSpeechGainNode.connect(delay);
+            delay.connect(head.audioReverbNode);
+
+            headAudio.onvalue = (key, value) => {
+              const target = head.mtAvatar[key];
+              if (target) Object.assign(target, { newvalue: value, needsUpdate: true });
+            };
+            head.opt.update = headAudio.update.bind(headAudio);
+
+            // Look at the viewer and gesture when a new sentence starts
+            let lastEnded = 0;
+            headAudio.onended = () => {
+              lastEnded = Date.now();
+            };
+            headAudio.onstarted = () => {
+              if (Date.now() - lastEnded > 150) {
+                head.lookAtCamera(500);
+                head.speakWithHands();
+              }
+            };
+            preciseLipSync = true;
+          } catch (err) {
+            console.warn('Precise lip-sync unavailable, using the simple one:', err);
           }
-        };
+        } else {
+          console.warn('AudioWorklet unavailable (insecure context?); using simple lip-sync. Serve Echo over HTTPS for full lip-sync.');
+        }
+
+        if (!preciseLipSync) {
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          head.audioSpeechGainNode.connect(analyser);
+          const samples = new Uint8Array(analyser.fftSize);
+          let level = 0;
+          head.opt.update = () => {
+            analyser.getByteTimeDomainData(samples);
+            let sum = 0;
+            for (const s of samples) sum += ((s - 128) / 128) ** 2;
+            const loudness = Math.min(1, Math.sqrt(sum / samples.length) * 4);
+            level += (loudness - level) * 0.4; // smooth the jaw so it doesn't flutter
+            for (const [key, scale] of [['jawOpen', 0.7], ['viseme_aa', 0.5]] as const) {
+              const target = head.mtAvatar[key];
+              if (target) Object.assign(target, { newvalue: level * scale, needsUpdate: true });
+            }
+          };
+        }
 
         setHead(head);
       } catch (err) {
@@ -128,6 +203,26 @@ function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
       dispose();
     };
   }, []);
+
+  // Swap the model when the gender changes, keeping the same audio and lip-sync setup
+  useEffect(() => {
+    if (!head || loadedGenderRef.current === gender) return;
+    let cancelled = false;
+    setSwitching(true);
+    setProgress(0);
+    showModel(head, gender, (event) => {
+      if (!cancelled && event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
+    })
+      .then((fellBack) => {
+        loadedGenderRef.current = gender;
+        if (!cancelled) setUsedDefault(fellBack);
+      })
+      .catch((err) => console.error('Switching the avatar failed:', err))
+      .finally(() => !cancelled && setSwitching(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [head, gender]);
 
   // Browsers keep the audio context suspended until the user interacts with the page
   useEffect(() => {
@@ -209,7 +304,7 @@ function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
   if (failed) {
     state = 'offline';
     status = 'Avatar unavailable on this device';
-  } else if (!head) {
+  } else if (!head || switching) {
     state = 'loading';
     status = `Loading avatar… ${progress}%`;
   } else if (micStream) {
@@ -234,6 +329,9 @@ function Avatar({ micStream, isThinking, audioElement }: AvatarProps) {
         <div ref={containerRef} className="avatar-stage" />
       </div>
       <p className="avatar-status" role="status">{status}</p>
+      {usedDefault && gender === 'M' && !failed && (
+        <p className="avatar-note">No male model installed, so the default avatar is shown. Add public/avatars/male.glb to change it.</p>
+      )}
     </section>
   );
 }

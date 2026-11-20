@@ -2,7 +2,7 @@
 
 ![Echo Banner](banner.png)
 
-A self-hosted, containerized, mobile-first Progressive Web App that clones a voice from a short sample and speaks any text in it. An animated 3D avatar listens while you record, thinks while the voice is generated, and lip-syncs to the result. Everything runs on your own hardware (CPU only): voice samples and generated audio are never sent to a third party, and the only optional outside call is text enhancement via OpenRouter.
+A self-hosted, containerized, mobile-first Progressive Web App that clones a voice from a short sample and speaks any text in it. An animated 3D avatar on the Synthesize page thinks while the voice is generated and lip-syncs to the result. Everything runs on your own hardware (CPU only): voice samples and generated audio are never sent to a third party, and the only optional outside calls are AI text writing and polishing via OpenRouter, which send text only.
 
 ---
 
@@ -14,6 +14,8 @@ A self-hosted, containerized, mobile-first Progressive Web App that clones a voi
 - [Quick Start](#quick-start)
 - [Local Development (without Docker)](#local-development-without-docker)
 - [Avatar](#avatar)
+- [Library and History](#library-and-history)
+- [Settings](#settings)
 - [Look and Feel](#look-and-feel)
 - [PWA Features](#pwa-features)
 - [REST API Reference](#rest-api-reference)
@@ -33,12 +35,12 @@ A self-hosted, containerized, mobile-first Progressive Web App that clones a voi
 ```mermaid
 graph TB
     subgraph clientLayer["Client Layer"]
-        pwa["React PWA :5173<br/>(nginx :80 in Docker)<br/>Recorder · Uploader · Player"]
+        pwa["React PWA :5173<br/>(nginx :80 in Docker)<br/>Recorder · Equalizer player · Library · History"]
         avatar["TalkingHead + HeadAudio<br/>(runs in the browser)<br/>3D avatar · audio-driven lip-sync"]
     end
 
     subgraph appLayer["Application Layer"]
-        api["API Server :8000<br/>(Node.js + Express)<br/>Uploads · Consent · Rate Limiting · Job Queue"]
+        api["API Server :8000<br/>(Node.js + Express)<br/>Uploads · Consent · Rate Limiting · Job Queue<br/>Swagger docs at /api/docs"]
     end
 
     subgraph engineLayer["Voice Engine"]
@@ -48,15 +50,15 @@ graph TB
     end
 
     subgraph externalLayer["External (optional)"]
-        openrouter["OpenRouter API<br/>Text enhancement"]
+        openrouter["OpenRouter API<br/>Text writing and polishing"]
     end
 
-    pwa <-->|"POST /api/clone-voice<br/>nginx proxies /api"| api
+    pwa <-->|"/api/clone-voice · /api/generate-text<br/>/api/enhance-text · nginx proxies /api"| api
     pwa --- avatar
     api <-->|"job in · WAV path out"| worker
     worker --> ffmpeg
     worker --> tts
-    worker -.->|"only if Enhance is ticked<br/>text only, never audio"| openrouter
+    api -.->|"only when Write text or Polish wording is used<br/>text only, never audio"| openrouter
 
     classDef client stroke:#18a35c,fill:#ecfdf3
     classDef app stroke:#b9832b,fill:#fefce8
@@ -71,10 +73,11 @@ graph TB
 
 ### Request Flow
 
-1. The browser records (or uploads) a voice sample and sends it with the text to `POST /api/clone-voice`.
-2. The API server validates the upload, consent and text, then queues a job for the Python worker. Jobs run one at a time.
-3. The worker converts the sample with ffmpeg, optionally rewrites the text through OpenRouter, and synthesizes the speech with YourTTS.
-4. The API streams the resulting WAV back and deletes every temporary file. The avatar lip-syncs to the audio as it plays.
+1. Optionally, the browser asks `POST /api/generate-text` to write a script from an idea, or `POST /api/enhance-text` to polish the wording. Both call OpenRouter and put the result in the text box, where you can edit it.
+2. The browser records (or uploads, or picks from the library) a voice sample and sends it with the text to `POST /api/clone-voice`.
+3. The API server validates the upload, consent and text, then queues a job for the Python worker. Jobs run one at a time.
+4. The worker converts the sample with ffmpeg and synthesizes the speech with YourTTS.
+5. The API streams the resulting WAV back and deletes every temporary file. The browser keeps a copy in its history, and the avatar lip-syncs to the audio as it plays.
 
 ### Component Stack
 
@@ -82,8 +85,8 @@ graph TB
 |-----------|------------|------|
 | **Voice cloning** | [Coqui TTS](#coqui-tts) (`coqui-tts` fork) + YourTTS | Zero-shot voice cloning on CPU — ~425 MB model, no API cost |
 | **Audio preprocessing** | [pydub](https://github.com/jiaaro/pydub) + ffmpeg | Decodes any browser or uploaded format to mono 16-bit 22.05 kHz WAV |
-| **Text enhancement** | [OpenRouter](#openrouter) via the `openai` SDK | Optional rewrite of the text so it sounds natural when spoken |
-| **API Server** | Node.js 20 + Express, multer, express-rate-limit | REST API, uploads, consent, rate limiting, job queue |
+| **AI text** | [OpenRouter](#openrouter) | Optional: write a script from an idea, or polish wording so it sounds natural when spoken |
+| **API Server** | Node.js 20 + Express, multer, express-rate-limit, swagger-ui-express | REST API, uploads, consent, rate limiting, job queue, interactive docs |
 | **Frontend** | React 18 + TypeScript + Vite 5 + `vite-plugin-pwa` | Installable, offline-capable app shell |
 | **Avatar** | [TalkingHead](https://github.com/met4citizen/TalkingHead) (three.js) + [HeadAudio](https://github.com/met4citizen/HeadAudio) | 3D avatar with audio-driven lip-sync, fully in the browser |
 | **Web server** | nginx | Serves the PWA and proxies `/api` to the backend |
@@ -100,17 +103,17 @@ Echo can imitate a person's voice, so it ships with safeguards that are on by de
 - **Consent is required.** The Generate button stays disabled until the speaker's-permission checkbox is ticked, and the server rejects any request without `consent=true`.
 - **Upload validation.** One audio file only (checked by MIME type or extension), up to `MAX_UPLOAD_MB`.
 - **Text limit.** At most `MAX_TEXT_LENGTH` characters per request.
-- **Rate limiting.** `RATE_LIMIT_PER_MINUTE` requests per minute on the cloning endpoint.
+- **Rate limiting.** `RATE_LIMIT_PER_MINUTE` requests per minute on the cloning and text endpoints.
 - **Bounded jobs.** One synthesis at a time with a `JOB_TIMEOUT_SECONDS` timeout; a hung worker is killed and restarted.
-- **Nothing is stored.** The uploaded sample, its converted copy and the generated WAV are deleted after every request, including failed and timed-out ones.
-- **Audio stays local.** Only the text goes to OpenRouter, and only when **Enhance text** is ticked.
+- **Nothing is stored on the server.** The uploaded sample, its converted copy and the generated WAV are deleted after every request, including failed and timed-out ones. The voice library and history live only in your own browser (see [Library and History](#library-and-history)).
+- **Audio stays local.** Only text goes to OpenRouter, and only when you use **Write text** or **Polish wording**.
 
 ### Configuration
 
 ```env
 # Limits (defaults shown)
 MAX_UPLOAD_MB=20
-MAX_TEXT_LENGTH=1000
+MAX_TEXT_LENGTH=5000
 JOB_TIMEOUT_SECONDS=600
 RATE_LIMIT_PER_MINUTE=5
 ```
@@ -126,7 +129,7 @@ RATE_LIMIT_PER_MINUTE=5
 - Docker Engine 24+ and Docker Compose v2.24+
 - A few GB of free disk space (PyTorch and the ~425 MB voice model)
 - Internet access on first run, to build the image and download the voice model
-- *Optional:* an [OpenRouter](https://openrouter.ai) API key for text enhancement
+- *Optional:* an [OpenRouter](https://openrouter.ai) API key for AI text writing and polishing
 
 ### 1 — Configure (Optional)
 
@@ -134,7 +137,7 @@ RATE_LIMIT_PER_MINUTE=5
 cp .env.example .env
 ```
 
-Echo has **one** `.env` file, at the repository root. Docker Compose, the backend and the frontend all read it. It is optional: Echo runs without it. Open it only to change a default, for example to enable text enhancement:
+Echo has **one** `.env` file, at the repository root. Docker Compose, the backend and the frontend all read it. It is optional: Echo runs without it. Open it only to change a default, for example to enable AI text writing and polishing:
 
 ```env
 # Free to create at https://openrouter.ai → Keys → Create Key
@@ -170,10 +173,25 @@ docker compose up --build --force-recreate frontend
 
 ### 4 — Clone a Voice
 
-1. Record a few seconds of clear speech with **Record Audio**, or **Choose File** to upload one (WAV, MP3, M4A, OGG, WebM, FLAC…).
-2. Type the text to speak. Tick **Enhance text via AI** if you set an OpenRouter key.
-3. Tick the consent checkbox, then press **Generate Voice**.
-4. Listen to the result, **Play Again**, or **Download Audio** as `cloned_voice.wav`.
+Echo has two working pages, **Sample** and **Synthesize**, plus **Library** and **History**, all reachable from the bottom dock. A progress bar at the top shows which of the three steps are done, and tapping a step jumps to its page.
+
+**Page 1, Sample.**
+
+1. **Voice sample.** Choose **Record**, **Upload** or **Library**.
+   - *Record:* read the on-screen paragraph aloud for 20 to 30 seconds. A live meter shows your level, a progress bar shows how close you are to the goal, and recording stops by itself after a minute. Use **Retake** to try again.
+   - *Upload:* any WAV, MP3, M4A, OGG, WebM or FLAC file with clear speech.
+   - *Library:* reuse a voice you saved earlier.
+
+   Once you have a sample, an equalizer player lets you listen, drag to seek, skip 10 seconds and download it. Name it and press **Save to library** to keep it, then press **Continue to script**. Leaving the page stops a recording in progress.
+
+**Page 2, Synthesize.** It shows the avatar (switch between **Female** and **Male** under it), the chosen voice (with **Change** to go back) and the script tools.
+
+2. **Script.** Type or paste the text. Optionally describe what you want in the AI box (for example "a 5 paragraph bedtime story about friendly monsters") and press **Write text**, or press **Polish wording** to rewrite what you typed. **Undo** restores your wording. Both need an OpenRouter key. Your script is remembered if you reload the page.
+3. **Consent.** Tick the checkbox, then press **Synthesize audio**. If something is missing, a line under the button says what to do next.
+
+While it generates, the avatar thinks and you see a timer and a **Cancel** button. The result appears in an equalizer player with **Download WAV**, and the avatar speaks it. Every result is also saved in **History**.
+
+> **Recording needs HTTPS or localhost.** Browsers block the microphone on plain `http://` addresses such as `http://192.168.1.20:5173`. Echo then tells you so and moves you to **Upload**. See [Troubleshooting](#troubleshooting).
 
 ---
 
@@ -214,18 +232,21 @@ The dev server reads the same root `.env` and proxies `/api` to `http://localhos
 
 ## Avatar
 
-The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. It appears only on the Synthesize page, and is not loaded until you first open that page. A **Female / Male** switch under it picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
 
 | State | Trigger | Ring and waveform |
 |-------|---------|-------------------|
-| **Listening** | While you record; the avatar follows the microphone | Ember |
-| **Thinking** | While the voice is generated | Gold, slow |
-| **Speaking** | While the generated audio plays | Emerald |
-| **Idle** | Otherwise | Quiet emerald |
+| **Thinking** | While the voice is generated | Cyan, slow |
+| **Speaking** | While the generated audio plays | Mint |
+| **Idle** | Otherwise | Quiet mint |
 
 It is loaded as a separate chunk after the page is shown. If WebGL is unavailable, the avatar is hidden and the rest of the app works as before.
 
-### Replacing the Model
+**Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
+
+### Replacing the Models
+
+The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. **No male model ships with Echo**: until you add `male.glb`, choosing Male shows the default model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
 
 The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB. To use your own:
 
@@ -238,22 +259,53 @@ The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPF
    npx @gltf-transform/cli meshopt b.glb generic.glb
    ```
 
-3. Replace `frontend/public/avatars/generic.glb`, or change `AVATAR_URL` / `AVATAR_OPTIONS` (body type, mood, camera view) at the top of `Avatar.tsx`.
+3. Save it as `frontend/public/avatars/male.glb` (or `generic.glb` for the female avatar), or change `MODEL_URLS` at the top of `Avatar.tsx`.
+
+---
+
+## Library and History
+
+Both live in your browser's IndexedDB. Nothing is uploaded or stored on the server, and clearing the site's data in the browser deletes them.
+
+- **Library.** Save any recorded or uploaded sample under a name, then reuse it from the **Library** source on the Sample page or from the **Library** page (where **Use voice** jumps straight to Synthesize). Each voice has an equalizer player, **Use voice**, **Download** and **Delete**.
+- **History.** Every generated voice is saved automatically with its text, the voice used and the time. Replay or download it, **Reuse text** to send the text back to the script box, or delete entries. The 50 most recent are kept.
 
 ---
 
 ## Look and Feel
 
-The interface is a dark cyberpunk HUD built from the logo's palette. All colors are CSS variables at the top of `frontend/src/index.css`, so the whole theme can be retuned in one place.
+The interface follows the "Obsidian Waveform" design system in `DESIGN.md`: dark glass cards over a carbon background, with luminous accents used only for interactive and live states. All colors are CSS variables at the top of `frontend/src/index.css`, so the whole theme can be retuned in one place.
 
 | Color | Hex | Used for |
 |-------|-----|----------|
-| **Void** | `#02080d` | Background |
-| **Emerald** | `#34e88e` | Primary accent, success, speaking |
-| **Gold** | `#d9b34a` / `#f3e58b` | Headings, Generate button, thinking |
-| **Ember** | `#ff7a45` | Recording and errors only |
+| **Obsidian** | `#0B0F12` | Background |
+| **Mint** | `#10F49C` | Primary actions, played audio, speaking |
+| **Emerald** | `#00DC82` | Focus borders, secondary actions |
+| **Cyan** | `#38BDF8` | AI text tools, thinking |
+| **Red** | `#F87171` | Recording and errors only |
 
-Fonts (Orbitron, Rajdhani, Share Tech Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion. The layout is one column on phones and two columns on desktop.
+It is built for phones first: a single column, a floating bottom dock (Sample, Synthesize, Library, History), and an equalizer-style player where the bars fill as audio plays and dragging them seeks. Fonts (Geist and JetBrains Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
+
+---
+
+## Settings
+
+The sliders icon in the top-right corner opens the Settings page.
+
+**Synthesizer** (saved in this browser, applied to every voice you generate; double-click a slider to reset it):
+
+| Setting | Effect |
+|---------|--------|
+| **Speed** | How fast the voice speaks, 0.6× to 1.5× |
+| **Expressiveness** | How much pitch and tone vary. Lower is steadier and flatter, higher is livelier but less predictable |
+| **Rhythm variation** | How much timing and pauses vary |
+| **Language of the text** | English, French or Portuguese (Brazil), the languages of the YourTTS model |
+
+Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. These map to the YourTTS (VITS) length, noise and duration-noise scales. Pitch is not offered because the model has no pitch control.
+
+**OpenRouter** lets you paste an API key and choose a model, with a **Test key** button. The key is saved on the server in `echo-settings.json` next to the voice models, so it survives rebuilds, and it is **never sent back to the browser** (only the last four characters are shown). A key saved here overrides `OPENROUTER_API_KEY` in `.env`. Because Echo has no accounts, anyone who can open the app can replace the key: keep Echo on a private network.
+
+**Developers** links to the [Swagger docs](#interactive-docs-swagger).
 
 ---
 
@@ -277,6 +329,10 @@ curl http://localhost:8000/api/health
 # → { "status": "ok" }
 ```
 
+### Interactive Docs (Swagger)
+
+Open **http://localhost:8000/api/docs** (or `/api/docs` on port `5173`) for a browsable, try-it-out description of every endpoint. The raw OpenAPI document is at `/api/openapi.json`.
+
 ### Voice Cloning
 
 ```bash
@@ -284,14 +340,6 @@ curl http://localhost:8000/api/health
 curl -X POST http://localhost:8000/api/clone-voice \
   -F "voiceSample=@/path/to/sample.wav" \
   -F "text=Hello from Echo" \
-  -F "consent=true" \
-  -o cloned_voice.wav
-
-# Rewrite the text through OpenRouter first (requires OPENROUTER_API_KEY)
-curl -X POST http://localhost:8000/api/clone-voice \
-  -F "voiceSample=@/path/to/sample.wav" \
-  -F "text=hey so this is, like, my message" \
-  -F "enhance=true" \
   -F "consent=true" \
   -o cloned_voice.wav
 ```
@@ -303,9 +351,39 @@ Form fields (`multipart/form-data`):
 | `voiceSample` | Yes | Audio file up to `MAX_UPLOAD_MB` — WAV, MP3, M4A, AAC, OGG, OPUS, WebM or FLAC |
 | `text` | Yes | Text to speak, up to `MAX_TEXT_LENGTH` characters |
 | `consent` | Yes | Must be `true`: confirms the speaker agreed to the cloning |
-| `enhance` | No | `true` to rewrite the text via OpenRouter first |
+| `language` | No | Language of the text: `en` (default), `fr-fr` or `pt-br` |
+| `speed` | No | `0.5` to `2`. `1` is the model default, higher is faster |
+| `expressiveness` | No | `0.1` to `1`. Lower sounds steadier and flatter |
+| `variation` | No | `0` to `1.5`. How much rhythm and pauses vary |
+| `enhance` | No | `true` to rewrite the text via OpenRouter first. The Echo app no longer sends this and uses `/api/enhance-text` instead |
 
 A successful request returns `200` with `Content-Type: audio/wav` and `Content-Disposition: attachment; filename="cloned_voice.wav"`.
+
+### Text Writing
+
+Both endpoints need an OpenRouter key (saved on the Settings page or set as `OPENROUTER_API_KEY`) and share the cloning rate limit. They return `{ "text": "..." }`, at most `MAX_TEXT_LENGTH` characters.
+
+```bash
+# Write a script from an idea (prompt up to 1000 characters)
+curl -X POST http://localhost:8000/api/generate-text \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Write me a 5 paragraph bedtime short story about friendly monsters"}'
+
+# Rewrite existing text so it sounds natural when spoken
+curl -X POST http://localhost:8000/api/enhance-text \
+  -H "Content-Type: application/json" \
+  -d '{"text": "hey so this is, like, my message"}'
+```
+
+### Settings
+
+```bash
+curl http://localhost:8000/api/settings          # key status, model, tuning ranges (never the key itself)
+
+curl -X PUT http://localhost:8000/api/settings   -H "Content-Type: application/json"   -d '{"openrouterApiKey": "sk-or-v1-...", "openrouterModel": "openai/gpt-4o-mini"}'   # "" removes a saved value
+
+curl -X POST http://localhost:8000/api/settings/test -H "Content-Type: application/json" -d '{}'   # checks the saved key
+```
 
 ### Errors
 
@@ -317,11 +395,15 @@ Errors return JSON: `{ "error": "..." }`.
 | `400` | `Please upload a single audio file as voiceSample` | Not an audio file, or more than one file |
 | `400` | `Voice sample must be at most 20 MB` | Upload larger than `MAX_UPLOAD_MB` |
 | `400` | `Text is required` | `text` missing or blank |
-| `400` | `Text must be at most 1000 characters` | Text longer than `MAX_TEXT_LENGTH` |
+| `400` | `Prompt is required`, `Prompt must be at most 1000 characters` | Missing or too long `prompt` on `/api/generate-text` |
+| `400` | `Text must be at most 5000 characters` | Text longer than `MAX_TEXT_LENGTH` |
 | `400` | `Consent from the voice owner is required` | `consent` is not `true` |
 | `429` | `Too many requests, please try again in a minute` | [Rate limit](#limits-and-rate-limiting) exceeded |
 | `500` | `Voice cloning failed: …`, `Audio preprocessing failed: …`, `Voice cloning process failed` | The worker could not process the sample, or crashed |
 | `500` | `Voice cloning timed out` | Job exceeded `JOB_TIMEOUT_SECONDS`; the worker is restarted |
+| `502` | `Text generation failed, please try again` | OpenRouter returned an error or nothing |
+| `503` | `Text generation is not configured: add an OpenRouter API key in Settings` | No OpenRouter key on the server |
+| `400` | `speed must be a number between 0.5 and 2` (and similar) | A tuning field is out of range |
 
 ---
 
@@ -338,14 +420,16 @@ All settings live in a single `.env` file at the repository root (copy `.env.exa
 | `PORT` | `8000` | API server port |
 | `HOST` | `0.0.0.0` | API server bind address |
 | `CORS_ORIGIN` | *(all origins)* | Comma-separated allowed origins. **Set this in production** |
-| `OPENROUTER_API_KEY` | — | Optional. Enables text enhancement. Create one at [openrouter.ai](https://openrouter.ai/keys) |
-| `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | OpenRouter model used for text enhancement |
+| `OPENROUTER_API_KEY` | — | Optional. Enables **Write text** and **Polish wording**. Create one at [openrouter.ai](https://openrouter.ai/keys). A key saved on the [Settings](#settings) page takes precedence |
+| `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | OpenRouter model used for writing and polishing text |
 | `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Coqui TTS voice-cloning model |
 | `MAX_UPLOAD_MB` | `20` | Largest accepted voice sample |
-| `MAX_TEXT_LENGTH` | `1000` | Longest accepted text, in characters |
+| `MAX_TEXT_LENGTH` | `5000` | Longest accepted text, in characters |
 | `JOB_TIMEOUT_SECONDS` | `600` | Per-request synthesis timeout (covers the first-run model download) |
-| `RATE_LIMIT_PER_MINUTE` | `5` | Cloning requests per minute |
+| `RATE_LIMIT_PER_MINUTE` | `5` | Requests per minute to the cloning and text endpoints |
+| `TRUST_PROXY_HOPS` | `1` | Reverse proxies in front of the API (the bundled nginx is one). Used to find the real client IP for rate limiting |
 | `PYTHON_BIN` | `python3` | Python interpreter used for the worker |
+| `SETTINGS_FILE` | `backend/models/echo-settings.json` | Where Settings-page values (OpenRouter key and model) are saved. In Docker this sits in the `tts-models` volume |
 | `TTS_HOME` | *(Coqui default)* | Where voice models are cached. Set to `/app/models` in Docker |
 
 ### Frontend
@@ -357,7 +441,7 @@ Only variables starting with `VITE_` are exposed to the browser, so secrets such
 | `VITE_BACKEND_URL` | *(empty)* | Empty sends `/api` through the dev server or nginx proxy. Set to call the backend directly |
 | `VITE_PROXY_TARGET` | `http://localhost:$PORT` | Where the Vite dev server proxies `/api` |
 
-> **Keep these in sync.** The text counter in the UI is fixed at 1000 characters (`MAX_TEXT_LENGTH` in `frontend/src/App.tsx`), and the bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_TEXT_LENGTH` or `MAX_UPLOAD_MB` on the backend, change them there too.
+> **Keep these in sync.** The text counter in the UI is fixed at 5000 characters (`MAX_TEXT_LENGTH` in `frontend/src/App.tsx`), and the bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_TEXT_LENGTH` or `MAX_UPLOAD_MB` on the backend, change them there too.
 
 ---
 
@@ -367,9 +451,10 @@ Echo limits what a single request can cost, because voice synthesis is CPU-heavy
 
 | Limit | Default | Applies to |
 |-------|---------|------------|
-| **Request rate** | 5 per minute | `POST /api/clone-voice` |
+| **Request rate** | 5 per minute | `POST /api/clone-voice`, `/api/generate-text`, `/api/enhance-text` (shared counter) |
 | **Upload size** | 20 MB | Voice sample |
-| **Text length** | 1000 characters | `text` field |
+| **Text length** | 5000 characters | `text` field and AI-written text |
+| **Prompt length** | 1000 characters | `prompt` for `/api/generate-text` |
 | **Concurrency** | 1 job at a time | The Python worker; other requests wait their turn |
 | **Job timeout** | 600 seconds | Each job; includes the first-run model download |
 
@@ -428,11 +513,15 @@ Behind the bundled nginx all browsers share one counter (see [Limits and Rate Li
 
 **Microphone access not working**
 
-Browsers only allow the microphone on HTTPS or `localhost`, and the permission must be granted. If you serve Echo from another machine, put it behind HTTPS.
+Browsers only allow the microphone on HTTPS or `localhost`, and the permission must be granted. Opening Echo through a LAN address such as `http://192.168.1.20:5173` is *not* secure, so recording is blocked: Echo says so and switches to **Upload**. Put Echo behind HTTPS (for example a reverse proxy with a certificate) to record from other devices. For a quick test on the same machine, use `http://localhost:5173`.
 
 **The avatar does not appear, or its mouth does not move**
 
-The avatar needs WebGL; without it the status line reads "Avatar unavailable on this device" and the rest of the app still works. Browsers also keep audio suspended until you interact with the page, so tap or click once before playing.
+The avatar needs WebGL; without it the status line reads "Avatar unavailable on this device" and the rest of the app still works. On a plain `http://` address other than `localhost` the avatar still appears but uses a simpler loudness-based mouth, because precise lip-sync needs HTTPS (see [Avatar](#avatar)). Browsers also keep audio suspended until you interact with the page, so tap or click once before playing.
+
+**`Text generation is not configured`**
+
+**Write text** and **Polish wording** need an OpenRouter key. Paste it on the Settings page (no restart needed), or set `OPENROUTER_API_KEY` in the root `.env` and restart the backend.
 
 **CORS errors**
 
@@ -471,23 +560,34 @@ Container names are generated by Docker Compose from the project folder (for exa
 ```
 echo/
 ├── backend/
-│   ├── index.js              # Express server + Python worker management
+│   ├── index.js              # Express server, text endpoints + Python worker management
+│   ├── openapi.js            # OpenAPI description served at /api/docs
+│   ├── settings.js           # OpenRouter key and model saved from the Settings page
 │   ├── voice_clone.py        # Long-running voice cloning worker (JSON lines over stdin/stdout)
 │   ├── requirements.txt      # Python dependencies
 │   ├── package.json
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx           # Main React component
+│   │   ├── App.tsx           # Sample and Synthesize pages, tabs and dock
 │   │   ├── Avatar.tsx        # 3D avatar (TalkingHead + HeadAudio lip-sync)
+│   │   ├── Settings.tsx      # Settings page (synthesizer, OpenRouter, API docs link)
+│   │   ├── api.ts            # API base URL and browser-stored settings
+│   │   ├── WaveformPlayer.tsx # Equalizer-style audio player
+│   │   ├── LiveMeter.tsx     # Level bars while recording
+│   │   ├── Library.tsx       # Saved voices
+│   │   ├── History.tsx       # Generated audio
+│   │   ├── db.ts             # IndexedDB storage for library and history
+│   │   ├── format.ts         # Formatting and filename helpers
 │   │   ├── main.tsx          # Entry point, fonts
-│   │   └── index.css         # Cyberpunk theme
+│   │   └── index.css         # Obsidian Waveform theme
 │   ├── public/               # PWA icons, logo, avatars/generic.glb
 │   ├── nginx.conf            # Production nginx config (SPA + /api proxy)
 │   ├── vite.config.ts
 │   ├── package.json
 │   └── Dockerfile
 ├── .env.example              # Single configuration file for Docker, backend and frontend
+├── DESIGN.md                 # Design system the UI follows
 ├── banner.png
 ├── docker-compose.yml
 └── README.md
@@ -513,18 +613,23 @@ Set `TTS_MODEL_NAME` in `.env` to another Coqui voice-cloning model, for example
 
 ## OpenRouter
 
-[OpenRouter](https://openrouter.ai) is an optional cloud LLM gateway. When **Enhance text via AI** is ticked, Echo asks a model to rewrite the text so it sounds natural when read aloud, keeping its meaning and language. If the request fails, Echo silently speaks the original text.
+[OpenRouter](https://openrouter.ai) is an optional cloud LLM gateway. Echo uses it for two things, both on the Script step:
+
+- **Write text:** describe what you want ("a 5 paragraph bedtime short story about friendly monsters") and a model writes speech-friendly prose into the text box.
+- **Polish wording:** a model rewrites your text so it sounds natural when read aloud, keeping its meaning and language. **Undo** restores the original.
+
+Add the key on the [Settings](#settings) page or in `.env`. Without one both buttons report that text generation is not configured, and everything else works.
 
 - **Sign up:** https://openrouter.ai
 - **API keys:** https://openrouter.ai/keys
 - **Models:** any OpenRouter model ID works; the default is `openai/gpt-4o-mini`. Check OpenRouter for current pricing and free options
-- **Privacy:** only the text is sent, never the voice sample or the generated audio
+- **Privacy:** only your prompt or script is sent, never the voice sample or the generated audio
 
 Configuration:
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-yourkeyhere   # Leave empty to disable enhancement
-OPENROUTER_MODEL=openai/gpt-4o-mini       # Model used for the rewrite
+OPENROUTER_API_KEY=sk-or-v1-yourkeyhere   # Leave empty to disable AI text tools
+OPENROUTER_MODEL=openai/gpt-4o-mini       # Model used for writing and polishing
 ```
 
 ---
@@ -542,6 +647,6 @@ Third-party components keep their own licenses:
 | `coqui-tts` | MPL-2.0 |
 | **YourTTS voice model** | **CC BY-NC-ND 4.0 — non-commercial use only** |
 | Placeholder avatar `generic.glb` (MPFB sample) | CC0 |
-| Orbitron, Rajdhani, Share Tech Mono fonts | OFL-1.1 |
+| Geist, JetBrains Mono fonts | OFL-1.1 |
 
 > **Commercial use:** because of the YourTTS model license, using Echo's output commercially requires replacing the model with one whose license allows it.

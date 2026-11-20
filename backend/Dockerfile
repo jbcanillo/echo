@@ -11,10 +11,13 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # coqui-tts doesn't install PyTorch itself. The CPU-only build keeps the image several GB
-# smaller than the default CUDA build; torchcodec is needed for audio I/O with PyTorch 2.9+
+# smaller than the default CUDA build; torchcodec is needed for audio I/O with PyTorch 2.9+.
+# PyPI stays the main index (--extra-index-url, not --index-url) because the PyTorch index only
+# hosts torch packages, not their dependencies (typing_extensions, numpy, ...).
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec && \
-    pip install --no-cache-dir -r requirements.txt
+# Installed in ONE pip call so the resolver picks torch versions that satisfy coqui-tts too.
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch torchaudio torchcodec -r requirements.txt
 
 COPY package*.json ./
 RUN npm ci --omit=dev
