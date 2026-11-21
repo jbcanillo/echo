@@ -21,13 +21,30 @@ sys.stdout = sys.stderr
 
 _tts = None
 
+DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/your_tts"
+# Extra Python packages XTTS-v2 needs for these languages (the coqui-tts "ja", "ko" and "zh" extras)
+CJK_PACKAGES = {"cutlet", "fugashi", "unidic_lite", "pypinyin", "spacy_pkuseg", "hangul_romanize", "g2pk", "ko_speech_tools"}
+
+
+def model_name():
+    return os.getenv("TTS_MODEL_NAME") or DEFAULT_MODEL
+
+
+def is_xtts():
+    return "xtts" in model_name().lower()
+
 
 def get_tts():
     global _tts
     if _tts is None:
+        if is_xtts() and os.environ.get("COQUI_TOS_AGREED") != "1":
+            # Without this, the library would ask the question on stdin, which is Echo's job channel, and hang
+            raise RuntimeError(
+                "XTTS-v2 is released under the Coqui Public Model License (non-commercial use). "
+                "Read it at https://coqui.ai/cpml and, if you accept it, set COQUI_TOS_AGREED=1 in .env and restart."
+            )
         from TTS.api import TTS
-        model_name = os.getenv("TTS_MODEL_NAME") or "tts_models/multilingual/multi-dataset/your_tts"
-        _tts = TTS(model_name).to("cpu")
+        _tts = TTS(model_name()).to("cpu")
     return _tts
 
 
@@ -90,6 +107,17 @@ def apply_synth_settings(tts, job):
     return previous
 
 
+def xtts_settings(job):
+    """XTTS-v2 takes its tuning as arguments of each call: speed is `speed`, expressiveness is the sampling
+    `temperature`. It has no equivalent of rhythm variation, so that setting is ignored."""
+    settings = {}
+    if job.get("speed"):
+        settings["speed"] = float(job["speed"])
+    if job.get("expressiveness") is not None:
+        settings["temperature"] = float(job["expressiveness"])
+    return settings
+
+
 def process(job):
     voice_sample_path = job["voice_sample_path"]
     output_path = job["output_path"]
@@ -108,13 +136,25 @@ def process(job):
         previous = {}
         try:
             tts = get_tts()
-            previous = apply_synth_settings(tts, job)
+            if is_xtts():
+                extra = xtts_settings(job)
+            else:
+                extra = {}
+                previous = apply_synth_settings(tts, job)
             tts.tts_to_file(
                 text=text,
                 speaker_wav=processed_input,
                 language=job.get("language") or "en",
                 file_path=output_path,
+                **extra,
             )
+        except ModuleNotFoundError as e:
+            if is_xtts() and (e.name or "").split(".")[0] in CJK_PACKAGES:
+                return {"error": (
+                    f"Voice cloning failed: this language needs an extra Python package ({e.name}). Install the "
+                    "language packages with: pip install 'coqui-tts[ja,ko,zh]'. With Docker, set XTTS_LANGUAGES=true in .env and rebuild."
+                )}
+            return {"error": f"Voice cloning failed: {e}"}
         except Exception as e:
             return {"error": f"Voice cloning failed: {e}"}
         finally:

@@ -19,6 +19,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
     torch torchaudio torchcodec -r requirements.txt
 
+# Optional: the extra packages XTTS-v2 needs for Japanese, Korean and Chinese. Set XTTS_LANGUAGES=true in .env and rebuild.
+ARG XTTS_LANGUAGES=false
+RUN if [ "$XTTS_LANGUAGES" = "true" ]; then pip install --no-cache-dir "coqui-tts[ja,ko,zh]"; fi
+
 COPY package*.json ./
 RUN npm ci --omit=dev
 

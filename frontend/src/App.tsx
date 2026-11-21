@@ -7,7 +7,7 @@ import { LiveMeter } from './LiveMeter';
 import { Settings } from './Settings';
 import { InstallBanner } from './InstallPrompt';
 import { enableNotifications, notify, useNotifyState } from './notify';
-import { API_BASE, DEFAULT_LIMITS, DEFAULT_SYNTH, fetchLimits, loadAvatarGender, loadSynth, saveAvatarGender, saveSynth, type Limits, type SynthSettings } from './api';
+import { API_BASE, DEFAULT_LIMITS, DEFAULT_MODEL, fetchConfig, loadAvatarGender, loadSynth, loadSynthModel, reconcileSynth, saveAvatarGender, saveSynth, saveSynthModel, type Limits, type ModelInfo, type SynthSettings } from './api';
 import type { AvatarGender } from './Avatar';
 import { extensionFor, formatClock, formatTime, safeFilename } from './format';
 import { HistoryItem, SavedVoice, addHistoryItem, clearHistory, deleteHistoryItem, deleteVoice, listHistory, listVoices, newId, saveVoice } from './db';
@@ -76,6 +76,7 @@ function App() {
   // The avatar is only loaded once the synthesize page has been opened
   const [synth, setSynth] = useState<SynthSettings>(loadSynth);
   const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
+  const [model, setModel] = useState<ModelInfo>(DEFAULT_MODEL);
   const notifyState = useNotifyState();
   // Bumped when a custom avatar is uploaded or removed in Settings, so the avatar reloads
   const [avatarVersion, setAvatarVersion] = useState(0);
@@ -140,7 +141,16 @@ function App() {
 
   // The server decides the limits (they come from its .env), so read them instead of assuming
   useEffect(() => {
-    fetchLimits().then((fetched) => fetched && setLimits(fetched));
+    fetchConfig().then((config) => {
+      if (!config) return;
+      setLimits(config.limits);
+      setModel(config.model);
+      // Saved tuning belongs to the model it was set for; a different model starts from its own defaults.
+      // The saved model is read now: React applies the update below later, after it has been overwritten.
+      const savedModel = loadSynthModel();
+      setSynth((current) => reconcileSynth(current, config.model, savedModel));
+      saveSynthModel(config.model.id);
+    });
   }, []);
 
   // Keep the draft
@@ -401,7 +411,7 @@ function App() {
     formData.append('language', synth.language);
     // Only send tuning the user changed; otherwise the model's own defaults apply
     for (const key of ['speed', 'expressiveness', 'variation'] as const) {
-      if (synth[key] !== DEFAULT_SYNTH[key]) formData.append(key, String(synth[key]));
+      if (model.tuning[key] && synth[key] !== model.defaults[key]) formData.append(key, String(synth[key]));
     }
 
     const controller = new AbortController();
@@ -440,7 +450,7 @@ function App() {
       abortRef.current = null;
       setIsGenerating(false);
     }
-  }, [audioSample, text, consent, sampleLabel, synth, limits.maxTextLength, refreshHistory]);
+  }, [audioSample, text, consent, sampleLabel, synth, model, limits.maxTextLength, refreshHistory]);
 
   // Reset form
   const resetForm = useCallback(() => {
@@ -809,7 +819,7 @@ function App() {
         </section>
 
         <section className="panel" data-active={tab === 'settings'} aria-label="Settings">
-          <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
+          <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} model={model} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
         </section>
 
       </div>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { API_BASE, DEFAULT_SYNTH, LANGUAGES, SynthSettings, synthIsDefault } from './api';
+import { API_BASE, defaultSynth, ModelInfo, SynthSettings, synthIsDefault } from './api';
 import { AvatarSettings } from './AvatarSettings';
 import { InstallCard } from './InstallPrompt';
 import { NotificationsCard } from './NotificationsCard';
@@ -17,6 +17,8 @@ interface SettingsProps {
   active: boolean;
   synth: SynthSettings;
   onSynthChange: (next: SynthSettings) => void;
+  /** The voice model on the server: decides the languages and which sliders apply */
+  model: ModelInfo;
   /** Called when a custom avatar was uploaded or removed */
   onAvatarsChange: () => void;
 }
@@ -62,7 +64,7 @@ function Slider({ id, label, hint, min, max, step, value, defaultValue, format, 
   );
 }
 
-export function Settings({ active, synth, onSynthChange, onAvatarsChange }: SettingsProps) {
+export function Settings({ active, synth, onSynthChange, model, onAvatarsChange }: SettingsProps) {
   const [info, setInfo] = useState<OpenRouterInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
@@ -133,6 +135,10 @@ export function Settings({ active, synth, onSynthChange, onAvatarsChange }: Sett
           <span className="step">//</span> Synthesizer
         </h2>
         <p className="hint">Saved in this browser and applied to every voice you generate. Double-click a slider to reset it.</p>
+        <p className="hint model-line">
+          Voice model: <b>{model.name || model.model}</b> · {model.languages.length} language{model.languages.length === 1 ? '' : 's'}
+          {model.license ? ` · ${model.license}` : ''}
+        </p>
 
         <Slider
           id="set-speed"
@@ -142,7 +148,7 @@ export function Settings({ active, synth, onSynthChange, onAvatarsChange }: Sett
           max={1.5}
           step={0.05}
           value={synth.speed}
-          defaultValue={DEFAULT_SYNTH.speed}
+          defaultValue={model.defaults.speed}
           format={(v) => `${v.toFixed(2)}×`}
           onChange={(speed) => set({ speed })}
         />
@@ -154,27 +160,29 @@ export function Settings({ active, synth, onSynthChange, onAvatarsChange }: Sett
           max={1}
           step={0.05}
           value={synth.expressiveness}
-          defaultValue={DEFAULT_SYNTH.expressiveness}
+          defaultValue={model.defaults.expressiveness}
           format={(v) => v.toFixed(2)}
           onChange={(expressiveness) => set({ expressiveness })}
         />
-        <Slider
-          id="set-var"
-          label="Rhythm variation"
-          hint="How much the timing and pauses vary. Lower sounds more even."
-          min={0}
-          max={1.5}
-          step={0.05}
-          value={synth.variation}
-          defaultValue={DEFAULT_SYNTH.variation}
-          format={(v) => v.toFixed(2)}
-          onChange={(variation) => set({ variation })}
-        />
+        {model.tuning.variation && (
+          <Slider
+            id="set-var"
+            label="Rhythm variation"
+            hint="How much the timing and pauses vary. Lower sounds more even."
+            min={0}
+            max={1.5}
+            step={0.05}
+            value={synth.variation}
+            defaultValue={model.defaults.variation}
+            format={(v) => v.toFixed(2)}
+            onChange={(variation) => set({ variation })}
+          />
+        )}
 
         <div className="field">
           <label htmlFor="set-lang">Language of the text</label>
           <select id="set-lang" value={synth.language} onChange={(e) => set({ language: e.target.value })}>
-            {LANGUAGES.map(([code, name]) => (
+            {model.languages.map(({ code, name }) => (
               <option key={code} value={code}>
                 {name}
               </option>
@@ -183,7 +191,7 @@ export function Settings({ active, synth, onSynthChange, onAvatarsChange }: Sett
           <p className="hint">The voice sample can be in any language, but the text should match this setting.</p>
         </div>
 
-        <button className="btn btn-ghost btn-sm settings-reset" onClick={() => onSynthChange(DEFAULT_SYNTH)} disabled={synthIsDefault(synth)}>
+        <button className="btn btn-ghost btn-sm settings-reset" onClick={() => onSynthChange(defaultSynth(model))} disabled={synthIsDefault(synth, model)}>
           Reset to defaults
         </button>
       </section>

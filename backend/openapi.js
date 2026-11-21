@@ -54,7 +54,24 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
                     properties: {
                       maxTextLength: { type: 'integer', example: maxTextLength },
                       maxPromptLength: { type: 'integer', example: maxPromptLength },
-                      maxUploadMb: { type: 'integer', example: maxUploadMb }
+                      maxUploadMb: { type: 'integer', example: maxUploadMb },
+                      synthesizer: {
+                        type: 'object',
+                        description: 'The voice model in use (set with TTS_MODEL_NAME): its languages, which tuning fields it understands and their defaults',
+                        properties: {
+                          id: { type: 'string', example: 'xtts' },
+                          name: { type: 'string', nullable: true, example: 'XTTS-v2' },
+                          model: { type: 'string', example: 'tts_models/multilingual/multi-dataset/xtts_v2' },
+                          languages: {
+                            type: 'array',
+                            items: { type: 'object', properties: { code: { type: 'string', example: 'ja' }, name: { type: 'string', example: 'Japanese' } } }
+                          },
+                          tuning: { type: 'object', description: 'Whether speed, expressiveness and variation apply to this model' },
+                          defaults: { type: 'object', description: 'The model\'s own value for each tuning field' },
+                          license: { type: 'string', nullable: true },
+                          requiresLicenseAcceptance: { type: 'boolean' }
+                        }
+                      }
                     }
                   }
                 }
@@ -240,7 +257,7 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
                       type: 'string',
                       default: 'en',
                       example: 'en',
-                      description: 'Language of the text. The default YourTTS model supports en, fr-fr and pt-br'
+                      description: 'Language of the text. It must be one the active voice model supports: YourTTS (the default) accepts en, fr-fr and pt-br; XTTS-v2 accepts en, es, fr, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja and hi. GET /api/config lists them for the model in use'
                     },
                     speed: {
                       type: 'number',
@@ -258,7 +275,7 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
                       type: 'number',
                       minimum: synthRanges.variation[0],
                       maximum: synthRanges.variation[1],
-                      description: 'How much rhythm and pauses vary. Omit to use the model default'
+                      description: 'How much rhythm and pauses vary. Omit to use the model default. Ignored by XTTS-v2, which has no equivalent'
                     },
                     enhance: {
                       type: 'boolean',
