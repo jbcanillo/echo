@@ -260,7 +260,7 @@ A model without lip-sync shapes (`viseme_aa` or `jawOpen`) is accepted with a wa
 
 | Source | Cost | Notes |
 |--------|------|-------|
-| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible. A sample Avaturn export passes Echo's upload checks and loads and animates in the app. Avaturn's **Type 1 (T1)** avatars have a fixed face with no blend shapes, so Echo rejects them |
+| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible: in the editor open **Body type**, press **Type** (top right), pick **TYPE 2** and press **Switch**. A sample Avaturn export passes Echo's upload checks and loads and animates in the app. Avaturn's **Type 1 (T1)** avatars have a fixed face with no blend shapes, so Echo rejects them |
 | [MPFB](https://static.makehumancommunity.org/mpfb.html) for Blender | Free, CC0 output | The most flexible, and how the bundled avatars started. Needs Blender; follow [TalkingHead's MPFB guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/MPFB/MPFB.md) |
 | [VRoid Studio](https://vroid.com/en/studio) | Free, permissive terms | Anime style. Its files must first be converted to TalkingHead's format in Blender, using [this guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/VRoid/VROID.md) |
 | [Avatar SDK (MetaPerson)](https://avatarsdk.com) | Commercial service | Realistic avatars from photos. Needs TalkingHead's conversion scripts |
@@ -586,7 +586,7 @@ Behind the bundled nginx all browsers share one counter (see [Limits and Rate Li
 
 **"This Avaturn avatar has no face blend shapes" when uploading an avatar**
 
-The file is a Type 1 (T1) Avaturn avatar. Avaturn's docs describe T1 as the fixed-face type, with no blend shapes, so nothing can move its mouth. Type 2 (T2) avatars have separate eyeballs and a mouth that can be animated with ARKit blend shapes and visemes. Export a T2 avatar instead, or use another source from [Where to Get Avatars](#where-to-get-avatars).
+The file is a Type 1 (T1) Avaturn avatar. Avaturn's docs describe T1 as the fixed-face type, with no blend shapes, so nothing can move its mouth. Type 2 (T2) avatars have separate eyeballs and a mouth that can be animated with ARKit blend shapes and visemes. In Avaturn's editor, open **Body type**, press **Type**, choose **TYPE 2** and press **Switch**, then export again. Or use another source from [Where to Get Avatars](#where-to-get-avatars).
 
 **Microphone access not working**
 

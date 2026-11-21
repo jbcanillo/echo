@@ -95,12 +95,13 @@ export function AvatarSettings({ onChange }: Props) {
             </li>
             <li>Follow its steps: add your photos, then choose the hair, clothes and look.</li>
             <li>
-              Choose a <b>T2</b> avatar. T2 has an animatable face with a mouth that can move. <b>T1</b>, the fixed-face type, has no blend shapes, so Echo rejects it: its mouth could not follow the
-              voice. Where avaturn.me offers the choice may vary; if you cannot find it, see{' '}
+              Switch the avatar to <b>Type 2 (T2)</b>. In the editor, open the <b>Body type</b> panel and press the <b>Type</b> button at its top right. In the "Choose avatar type" window pick{' '}
+              <b>TYPE 2</b> (face blendshape support) and press <b>Switch</b>. <b>Type 1</b> has a static face with no blend shapes, so Echo rejects it: its mouth could not follow the voice. T2 may look a little
+              less like you than T1. See{' '}
               <a href="https://docs.avaturn.me/docs/integration/bodies/" target="_blank" rel="noreferrer noopener">
                 Avaturn's docs on T1 and T2
-              </a>{' '}
-              or its help.
+              </a>
+              .
             </li>
             <li>
               Export or download it as a <b>.glb</b> file (glTF 2.0).
