@@ -232,15 +232,15 @@ The dev server reads the same root `.env` and proxies `/api` to `http://localhos
 
 ## Avatar
 
-The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**: along the top of the screen on a phone or a tablet held upright, and on the **right half of the screen, full height**, on a wide screen or a landscape phone or tablet, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**. On a phone or a tablet held upright, the title bar with the Settings button is fixed at the very top and the avatar window sits just below it. On a wide screen or a landscape phone or tablet, the avatar takes the **right half of the screen, full height**, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The avatar lip-syncs to **any audio played in Echo**: a newly generated voice, an item on the **History** or **Library** page, or the preview of your sample. The audio is analysed as it plays, so the lips follow pause and seek too, and the backend does nothing extra. Only one voice plays at a time: starting another stops the first.
 
 | State | Trigger | Ring and waveform |
 |-------|---------|-------------------|
 | **Thinking** | While the voice is generated | Cyan, slow |
-| **Speaking** | While the generated audio plays | Mint |
+| **Speaking** | While any audio plays in Echo | Mint |
 | **Idle** | Otherwise | Quiet mint |
 
-It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the top window shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
+It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the avatar bar shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
 
 **Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
 

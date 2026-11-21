@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { registerAvatarAudio } from './avatarAudio';
 import { formatTime } from './format';
 
 const BARS = 56;
@@ -32,14 +33,12 @@ interface WaveformPlayerProps {
   title: string;
   downloadName: string;
   autoPlay?: boolean;
-  /** Receives the underlying <audio> element (the avatar lip-syncs to it) */
-  onAudioElement?: (element: HTMLAudioElement | null) => void;
   /** Extra buttons placed after Download */
   children?: React.ReactNode;
 }
 
 /** Equalizer-style player: bars fill as the audio plays, and dragging the bars seeks */
-export function WaveformPlayer({ blob, title, downloadName, autoPlay, onAudioElement, children }: WaveformPlayerProps) {
+export function WaveformPlayer({ blob, title, downloadName, autoPlay, children }: WaveformPlayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveRef = useRef<HTMLDivElement>(null);
@@ -51,13 +50,14 @@ export function WaveformPlayer({ blob, title, downloadName, autoPlay, onAudioEle
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(false);
 
-  const setAudio = useCallback(
-    (element: HTMLAudioElement | null) => {
-      audioRef.current = element;
-      onAudioElement?.(element);
-    },
-    [onAudioElement]
-  );
+  // The avatar lip-syncs to whichever player is playing, so every <audio> element registers itself
+  const unregisterRef = useRef<(() => void) | null>(null);
+  const setAudio = useCallback((element: HTMLAudioElement | null) => {
+    unregisterRef.current?.();
+    unregisterRef.current = null;
+    audioRef.current = element;
+    if (element) unregisterRef.current = registerAvatarAudio(element);
+  }, []);
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(blob);

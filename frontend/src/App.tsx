@@ -111,7 +111,6 @@ function App() {
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLElement | null>(null);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const refreshVoices = useCallback(() => {
@@ -514,7 +513,7 @@ function App() {
       {/* The avatar window is fixed on every page: along the top on a phone, the right half of the screen on a wide one */}
       <aside className="avatar-window" aria-label="Avatar">
         <Suspense fallback={null}>
-          <Avatar micStream={null} isThinking={isGenerating} audioElement={audioElement} gender={gender} customVersion={avatarVersion} />
+          <Avatar micStream={null} isThinking={isGenerating} gender={gender} customVersion={avatarVersion} />
         </Suspense>
         <div className="segmented avatar-toggle" role="radiogroup" aria-label="Avatar">
           {(
@@ -780,7 +779,7 @@ function App() {
               <h2 id="h-out">
                 <span className="step">03 //</span> Generated voice
               </h2>
-              <WaveformPlayer blob={generatedBlob} title={generatedName} downloadName={generatedName} autoPlay onAudioElement={setAudioElement} />
+              <WaveformPlayer blob={generatedBlob} title={generatedName} downloadName={generatedName} autoPlay />
             </section>
           )}
         </section>
