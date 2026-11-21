@@ -8,7 +8,7 @@ const appSettings = require('./settings');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { describe: describeModel } = require('./models');
+const { describe: describeModel, catalog: modelCatalog, modelNameFor } = require('./models');
 const { spawn } = require('child_process');
 // One .env at the repository root is shared with Docker Compose and the frontend
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -87,7 +87,9 @@ const settingsLimiter = rateLimit({
 });
 
 // What the active voice model can do (languages, which sliders apply). Chosen with TTS_MODEL_NAME.
-const voiceModel = describeModel(TTS_MODEL_NAME);
+// The model is chosen in Settings (saved on the server); TTS_MODEL_NAME is the starting value.
+const activeModelName = () => modelNameFor(appSettings.getTtsModel()) || TTS_MODEL_NAME;
+const currentModel = () => describeModel(activeModelName());
 
 // Synthesizer tuning sent with each cloning request. Ranges are generous but keep the model sane.
 const SYNTH_RANGES = {
@@ -97,6 +99,7 @@ const SYNTH_RANGES = {
 };
 
 function parseSynthSettings(body) {
+  const voiceModel = currentModel();
   const out = {};
   for (const [field, [min, max]] of Object.entries(SYNTH_RANGES)) {
     const raw = body[field];
@@ -211,15 +214,29 @@ app.get('/api/openapi.json', (req, res) => res.json(apiSpec));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(apiSpec, { customSiteTitle: 'Echo API' }));
 
 // Settings: the OpenRouter key and model. The key is write-only: it is never sent back to the browser.
+// What the Settings page needs to offer the model choice
+function publicVoiceModel() {
+  const active = currentModel();
+  return {
+    active: active.id,
+    fromSettings: appSettings.ttsModelFromSettings(),
+    options: modelCatalog().map((m) => ({ ...m, licenseAccepted: !m.requiresLicenseAcceptance || licenseAccepted(m) })),
+    // A model Echo has no profile for (set with TTS_MODEL_NAME) shows as read-only
+    custom: active.id === 'generic' ? active.model : null
+  };
+}
+const licenseAccepted = (m) => process.env.COQUI_TOS_AGREED === '1' || appSettings.licenseAccepted(m.id);
+
 app.get('/api/settings', settingsLimiter, (req, res) => {
   res.json({
     openrouter: appSettings.publicOpenRouter(),
-    synthesizer: { ranges: SYNTH_RANGES, languages: voiceModel.languages.map((l) => l.code), model: voiceModel.name || voiceModel.model }
+    voiceModel: publicVoiceModel(),
+    synthesizer: { ranges: SYNTH_RANGES, languages: currentModel().languages.map((l) => l.code), model: currentModel().name || currentModel().model }
   });
 });
 
 app.put('/api/settings', settingsLimiter, (req, res) => {
-  const { openrouterApiKey, openrouterModel } = req.body || {};
+  const { openrouterApiKey, openrouterModel, ttsModel, acceptLicense } = req.body || {};
   const change = {};
   if (openrouterApiKey !== undefined) {
     if (typeof openrouterApiKey !== 'string' || openrouterApiKey.length > 300 || /\s/.test(openrouterApiKey)) {
@@ -233,13 +250,25 @@ app.put('/api/settings', settingsLimiter, (req, res) => {
     }
     change.openrouterModel = openrouterModel;
   }
+  if (ttsModel !== undefined) {
+    const chosen = modelCatalog().find((m) => m.id === ttsModel);
+    if (!chosen) {
+      return res.status(400).json({ error: `Unknown voice model. Choose one of: ${modelCatalog().map((m) => m.id).join(', ')}` });
+    }
+    // Accepting a license is the user's own act: it must be sent explicitly, and is never assumed
+    if (chosen.requiresLicenseAcceptance && !licenseAccepted(chosen) && acceptLicense !== true) {
+      return res.status(400).json({ error: `${chosen.name} is released under the ${chosen.license}. Accept the license to use it.` });
+    }
+    if (chosen.requiresLicenseAcceptance && acceptLicense === true) change.acceptLicense = chosen.id;
+    change.ttsModel = chosen.id;
+  }
   try {
     appSettings.update(change);
   } catch (err) {
     console.error('Could not save settings:', err.message);
     return res.status(500).json({ error: 'Could not save the settings on the server' });
   }
-  res.json({ openrouter: appSettings.publicOpenRouter() });
+  res.json({ openrouter: appSettings.publicOpenRouter(), voiceModel: publicVoiceModel() });
 });
 
 // Checks the saved key (or one passed in the body, to test before saving) against OpenRouter
@@ -274,7 +303,7 @@ app.get('/api/health', (req, res) => {
 
 // The limits actually in force, so the UI never has to guess (or hard-code) them
 app.get('/api/config', (req, res) => {
-  res.json({ maxTextLength: MAX_TEXT_LENGTH, maxPromptLength: MAX_PROMPT_LENGTH, maxUploadMb: MAX_UPLOAD_MB, synthesizer: voiceModel });
+  res.json({ maxTextLength: MAX_TEXT_LENGTH, maxPromptLength: MAX_PROMPT_LENGTH, maxUploadMb: MAX_UPLOAD_MB, synthesizer: currentModel() });
 });
 
 // Shared by the text endpoints: send a system + user message to OpenRouter and return the reply,
@@ -404,6 +433,8 @@ app.post('/api/clone-voice', cloneLimiter, upload.single('voiceSample'), async (
     enhance: enhance === 'true' || enhance === true,
     openrouter_key: appSettings.getApiKey(),
     openrouter_model: appSettings.getModel(),
+    model: activeModelName(),
+    license_accepted: licenseAccepted(currentModel()),
     ...synth.settings
   });
 
@@ -447,7 +478,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
   // A stale value in .env silently overrides the defaults, so show what is really in force
-  console.log(`Voice model: ${voiceModel.name || TTS_MODEL_NAME} (${voiceModel.languages.length} language${voiceModel.languages.length === 1 ? '' : 's'})`);
+  { const m = currentModel(); console.log(`Voice model: ${m.name || activeModelName()} (${m.languages.length} language${m.languages.length === 1 ? '' : 's'})`); }
   console.log(
     `Limits: text ${MAX_TEXT_LENGTH} chars, prompt ${MAX_PROMPT_LENGTH} chars, upload ${MAX_UPLOAD_MB} MB, ` +
       `${RATE_LIMIT_PER_MINUTE} requests/min, job timeout ${JOB_TIMEOUT_MS / 1000}s`

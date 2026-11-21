@@ -57,7 +57,7 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
                       maxUploadMb: { type: 'integer', example: maxUploadMb },
                       synthesizer: {
                         type: 'object',
-                        description: 'The voice model in use (set with TTS_MODEL_NAME): its languages, which tuning fields it understands and their defaults',
+                        description: 'The voice model in use (chosen in Settings, or TTS_MODEL_NAME until then): its languages, which tuning fields it understands and their defaults',
                         properties: {
                           id: { type: 'string', example: 'xtts' },
                           name: { type: 'string', nullable: true, example: 'XTTS-v2' },
@@ -183,7 +183,9 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
                   type: 'object',
                   properties: {
                     openrouterApiKey: { type: 'string', example: 'sk-or-v1-xxxxxxxx' },
-                    openrouterModel: { type: 'string', example: 'openai/gpt-4o-mini' }
+                    openrouterModel: { type: 'string', example: 'openai/gpt-4o-mini' },
+                    ttsModel: { type: 'string', enum: ['yourtts', 'xtts'], description: 'The voice model to use from now on' },
+                    acceptLicense: { type: 'boolean', description: 'Required with ttsModel xtts the first time: the caller has read and accepts the Coqui Public Model License (non-commercial)' }
                   }
                 }
               }

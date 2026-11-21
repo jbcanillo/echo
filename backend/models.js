@@ -29,6 +29,8 @@ const PROFILES = [
   {
     id: 'yourtts',
     name: 'YourTTS',
+    modelName: 'tts_models/multilingual/multi-dataset/your_tts',
+    note: 'Smaller and faster. 3 languages.',
     match: /your_?tts/i,
     languages: ['en', 'fr-fr', 'pt-br'],
     // speed -> length scale, expressiveness -> noise scale, variation -> duration noise scale (all VITS settings)
@@ -39,6 +41,8 @@ const PROFILES = [
   {
     id: 'xtts',
     name: 'XTTS-v2',
+    modelName: 'tts_models/multilingual/multi-dataset/xtts_v2',
+    note: 'Larger and slower, 17 languages. Downloads about 2 GB the first time it is used.',
     match: /xtts/i,
     // The language codes XTTS-v2 itself accepts
     languages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi'],
@@ -80,4 +84,19 @@ function describe(modelName) {
   };
 }
 
-module.exports = { profileFor, describe };
+/** The models a user can pick in Settings */
+function catalog() {
+  return PROFILES.map((p) => ({
+    id: p.id,
+    name: p.name,
+    modelName: p.modelName,
+    note: p.note,
+    languageCount: p.languages.length,
+    license: p.license,
+    requiresLicenseAcceptance: Boolean(p.requiresLicenseAcceptance)
+  }));
+}
+
+const modelNameFor = (id) => PROFILES.find((p) => p.id === id)?.modelName || null;
+
+module.exports = { profileFor, describe, catalog, modelNameFor };

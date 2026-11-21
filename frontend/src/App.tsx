@@ -140,7 +140,7 @@ function App() {
   }, []);
 
   // The server decides the limits (they come from its .env), so read them instead of assuming
-  useEffect(() => {
+  const refreshConfig = useCallback(() => {
     fetchConfig().then((config) => {
       if (!config) return;
       setLimits(config.limits);
@@ -152,6 +152,7 @@ function App() {
       saveSynthModel(config.model.id);
     });
   }, []);
+  useEffect(refreshConfig, [refreshConfig]);
 
   // Keep the draft
   useEffect(() => {
@@ -819,7 +820,7 @@ function App() {
         </section>
 
         <section className="panel" data-active={tab === 'settings'} aria-label="Settings">
-          <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} model={model} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
+          <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} model={model} onModelChange={refreshConfig} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
         </section>
 
       </div>

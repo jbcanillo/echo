@@ -26,6 +26,12 @@ function persist() {
 const getApiKey = () => stored.openrouterApiKey || process.env.OPENROUTER_API_KEY || '';
 const getModel = () => stored.openrouterModel || process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
 
+// The voice model chosen in Settings; TTS_MODEL_NAME in .env is only the starting point
+const getTtsModel = () => stored.ttsModel || '';
+const ttsModelFromSettings = () => Boolean(stored.ttsModel);
+// The user accepted this model's license in the app (per model id)
+const licenseAccepted = (id) => Boolean(stored.acceptedLicenses && stored.acceptedLicenses[id]);
+
 /** What the browser may know: never the key itself, only whether one exists and its last characters */
 function publicOpenRouter() {
   const key = getApiKey();
@@ -39,7 +45,7 @@ function publicOpenRouter() {
 }
 
 /** Apply a validated change: an empty string clears the saved value */
-function update({ openrouterApiKey, openrouterModel }) {
+function update({ openrouterApiKey, openrouterModel, ttsModel, acceptLicense }) {
   if (openrouterApiKey !== undefined) {
     if (openrouterApiKey) stored.openrouterApiKey = openrouterApiKey;
     else delete stored.openrouterApiKey;
@@ -48,7 +54,14 @@ function update({ openrouterApiKey, openrouterModel }) {
     if (openrouterModel) stored.openrouterModel = openrouterModel;
     else delete stored.openrouterModel;
   }
+  if (ttsModel !== undefined) {
+    if (ttsModel) stored.ttsModel = ttsModel;
+    else delete stored.ttsModel;
+  }
+  if (acceptLicense) {
+    stored.acceptedLicenses = { ...stored.acceptedLicenses, [acceptLicense]: new Date().toISOString() };
+  }
   persist();
 }
 
-module.exports = { getApiKey, getModel, publicOpenRouter, update, DEFAULT_MODEL };
+module.exports = { getApiKey, getModel, publicOpenRouter, update, getTtsModel, ttsModelFromSettings, licenseAccepted, DEFAULT_MODEL };
