@@ -244,9 +244,21 @@ It is loaded as a separate chunk after the page is shown. If WebGL is unavailabl
 
 **Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
 
+### Your Own Avatars
+
+Open **Settings → Avatars** to replace the built-in female or male avatar with your own `.glb` model. The files are stored in this browser (IndexedDB) and are never uploaded; **Use default** removes one. The avatar on the Synthesize page reloads as soon as you save.
+
+Echo checks a file before accepting it, because TalkingHead needs a specific structure. A file is rejected, with a message saying why, if it:
+
+- is not a binary glTF 2.0 (`.glb`) file, or is larger than 60 MB
+- lacks the Mixamo-compatible skeleton (`Hips`, `Spine`, arms, hands, fingers, legs and toes; a `mixamorig` prefix is fine)
+- has no blend shapes (morph targets)
+
+A model without lip-sync shapes (`viseme_aa` or `jawOpen`) is accepted with a warning: it loads, but its mouth will not move. If a saved file passes these checks but still fails to load (for example because it is truncated), Echo shows the built-in avatar and says so. To make a compatible model, follow the steps under [Replacing the Models](#replacing-the-models).
+
 ### Replacing the Models
 
-The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. **No male model ships with Echo**: until you add `male.glb`, choosing Male shows the default model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
+These steps are for changing the **built-in** avatars in the source code, or for preparing a model to upload in Settings. The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. **No male model ships with Echo**: until you add `male.glb`, choosing Male shows the default model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
 
 The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB. To use your own:
 
@@ -303,6 +315,12 @@ The sliders icon in the top-right corner opens the Settings page.
 
 Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. These map to the YourTTS (VITS) length, noise and duration-noise scales. Pitch is not offered because the model has no pitch control.
 
+**Avatars** uploads your own female and male 3D avatars (see [Your Own Avatars](#your-own-avatars)).
+
+**Notifications** turns on a browser notification for when a voice is ready or fails, with a **Send a test** button. See [Notifications and Installing](#notifications-and-installing).
+
+**Install app** installs Echo on your device when the browser allows it.
+
 **OpenRouter** lets you paste an API key and choose a model, with a **Test key** button. The key is saved on the server in `echo-settings.json` next to the voice models, so it survives rebuilds, and it is **never sent back to the browser** (only the last four characters are shown). A key saved here overrides `OPENROUTER_API_KEY` in `.env`. Because Echo has no accounts, anyone who can open the app can replace the key: keep Echo on a private network.
 
 **Developers** links to the [Swagger docs](#interactive-docs-swagger).
@@ -311,10 +329,19 @@ Only sliders you moved are sent to the server; untouched ones leave the model's 
 
 ## PWA Features
 
-- Installable on mobile and desktop, with icons generated from the logo
+- Installable on mobile and desktop, with icons generated from the logo, and an **Install now** prompt while it is not installed
+- Notifications when a voice is ready or fails (see below)
 - Offline caching of the app shell, fonts, lip-sync worklet and avatar model (the avatar model is cached on first use); generating a voice still needs the backend
 - Automatic updates through the service worker
 - API requests are never served from the service-worker cache
+
+### Notifications and Installing
+
+**Install prompt.** While Echo is not installed, a banner offers **Install now** (and **Not now**, which hides it for two weeks). It uses the browser's own install dialog, so it appears only where the browser supports installing: Chrome, Edge and other Chromium browsers. On iPhone and iPad there is no install dialog, so the banner explains **Share → Add to Home Screen** instead. The same option is always available under **Settings → Install app**. Installing requires HTTPS (or `localhost`).
+
+**Notifications.** Turn them on under **Settings → Notifications**, or with **Notify me when it is done** while a voice is generating. Echo then sends a notification when a voice is ready, or fails, **only while it is in the background** (another tab or window), never while you are looking at it. Clicking the notification brings Echo to the front. The same applies to the AI text tools, **Write text** and **Polish wording**. Notifications need HTTPS (or `localhost`); on iPhone and iPad they work once Echo is added to the home screen (iOS 16.4 or later).
+
+> **Limits.** These are local notifications: the page shows them itself, and nothing goes through a push server. They work while the browser keeps Echo running in the background. If you close the browser, or your phone puts it to sleep, the request is interrupted and no notification is sent. Notifying with the app closed would need real Web Push, which requires the server to keep generation jobs running on its own and to hold push subscriptions; Echo does not do that today.
 
 ---
 
@@ -328,6 +355,15 @@ All endpoints are public: Echo has no accounts or API keys, so keep it on a priv
 curl http://localhost:8000/api/health
 # → { "status": "ok" }
 ```
+
+### Configuration
+
+```bash
+curl http://localhost:8000/api/config
+# → { "maxTextLength": 5000, "maxPromptLength": 1000, "maxUploadMb": 20 }
+```
+
+The limits the server is actually enforcing. The web app reads them from here instead of assuming its own. The server also prints them when it starts (`Limits: text 5000 chars, …`), which is the quickest way to see what `.env` really set.
 
 ### Interactive Docs (Swagger)
 
@@ -441,7 +477,7 @@ Only variables starting with `VITE_` are exposed to the browser, so secrets such
 | `VITE_BACKEND_URL` | *(empty)* | Empty sends `/api` through the dev server or nginx proxy. Set to call the backend directly |
 | `VITE_PROXY_TARGET` | `http://localhost:$PORT` | Where the Vite dev server proxies `/api` |
 
-> **Keep these in sync.** The text counter in the UI is fixed at 5000 characters (`MAX_TEXT_LENGTH` in `frontend/src/App.tsx`), and the bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_TEXT_LENGTH` or `MAX_UPLOAD_MB` on the backend, change them there too.
+> **Upload size.** The bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_UPLOAD_MB` above that, raise it there too. The text and prompt limits need no matching change: the web app reads them from the server (`/api/config`).
 
 ---
 
@@ -490,6 +526,10 @@ docker compose logs -f backend
 ```
 
 On a slow connection, raise `JOB_TIMEOUT_SECONDS`. If you raise it above 600, also raise `proxy_read_timeout` and `proxy_send_timeout` in `frontend/nginx.conf`.
+
+**"Text must be at most 1000 characters" although the code allows more**
+
+A value in your `.env` overrides the built-in default. If you created `.env` from an older `.env.example`, it may still contain `MAX_TEXT_LENGTH=1000`. Set it to `5000` (or delete the line), then restart the backend. The first lines the server prints when it starts show the limits it is really using (`Limits: text 1000 chars, …`), and the counter under the script box follows them.
 
 **`Voice cloning failed` with `KeyError: 'yourtts'`**
 

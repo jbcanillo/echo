@@ -1,6 +1,31 @@
 // Empty in dev and Docker (requests go through the Vite/nginx proxy); set VITE_BACKEND_URL to call the backend directly
 export const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
+/** Limits the server enforces; the UI asks the server for them instead of hard-coding its own */
+export interface Limits {
+  maxTextLength: number;
+  maxPromptLength: number;
+  maxUploadMb: number;
+}
+
+// Used until the server answers (and if it can't be reached): the server's own defaults
+export const DEFAULT_LIMITS: Limits = { maxTextLength: 5000, maxPromptLength: 1000, maxUploadMb: 20 };
+
+export async function fetchLimits(): Promise<Limits | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/config`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+      maxTextLength: Number(data.maxTextLength) || DEFAULT_LIMITS.maxTextLength,
+      maxPromptLength: Number(data.maxPromptLength) || DEFAULT_LIMITS.maxPromptLength,
+      maxUploadMb: Number(data.maxUploadMb) || DEFAULT_LIMITS.maxUploadMb
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Synthesizer tuning, kept in this browser and sent with every voice generation */
 export interface SynthSettings {
   /** 1 is the model default, higher is faster */

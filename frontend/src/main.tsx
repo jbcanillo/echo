@@ -1,3 +1,4 @@
+import './install'; // first, so the browser's install offer is captured before anything renders
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { TalkingHead } from '@met4citizen/talkinghead';
 import { HeadAudio } from '@met4citizen/headaudio/dist/headaudio.min.mjs';
+import { getCustomAvatar } from './db';
 import headWorkletUrl from '@met4citizen/headaudio/dist/headworklet.min.mjs?url';
 import visemeModelUrl from '@met4citizen/headaudio/dist/model-en-mixed.bin?url';
 
@@ -28,8 +29,15 @@ async function isGlb(url: string): Promise<boolean> {
   }
 }
 
-/** Shows the avatar for a gender and resolves to true when it had to use the default model instead */
-async function showModel(head: TalkingHead, gender: AvatarGender, onProgress: (event: ProgressEvent) => void): Promise<boolean> {
+interface ModelResult {
+  /** The built-in model for the other gender had to stand in because this one isn't installed */
+  usedDefault: boolean;
+  /** The user's own model could not be loaded, so the built-in one is shown instead */
+  customFailed: boolean;
+}
+
+/** Shows the built-in avatar for a gender (the female one stands in if there is no male.glb) */
+async function showDefaultModel(head: TalkingHead, gender: AvatarGender, onProgress: (event: ProgressEvent) => void): Promise<boolean> {
   let url = MODEL_URLS[gender];
   let usedDefault = false;
   if (gender === 'M' && !(await isGlb(url))) {
@@ -38,6 +46,25 @@ async function showModel(head: TalkingHead, gender: AvatarGender, onProgress: (e
   }
   await head.showAvatar({ url, body: gender, avatarMood: 'neutral', lipsyncLang: 'en' }, onProgress);
   return usedDefault;
+}
+
+/** Shows the user's own avatar for a gender if they uploaded one in Settings, otherwise the built-in one */
+async function showModel(head: TalkingHead, gender: AvatarGender, onProgress: (event: ProgressEvent) => void): Promise<ModelResult> {
+  const custom = await getCustomAvatar(gender).catch(() => undefined);
+  let customFailed = false;
+  if (custom?.blob) {
+    const url = URL.createObjectURL(custom.blob);
+    try {
+      await head.showAvatar({ url, body: gender, avatarMood: 'neutral', lipsyncLang: 'en' }, onProgress);
+      return { usedDefault: false, customFailed: false };
+    } catch (err) {
+      console.warn('The custom avatar could not be loaded, using the built-in one:', err);
+      customFailed = true;
+    } finally {
+      URL.revokeObjectURL(url); // the loader has read it by now, or failed
+    }
+  }
+  return { usedDefault: await showDefaultModel(head, gender, onProgress), customFailed };
 }
 
 // HeadAudio needs ~100 ms to detect a viseme, so the audible speech is delayed to match the lips
@@ -67,9 +94,11 @@ interface AvatarProps {
   audioElement: HTMLAudioElement | null;
   /** Which avatar to show; changing it swaps the model without rebuilding the audio setup */
   gender: AvatarGender;
+  /** Bumped when the user uploads or removes a custom avatar in Settings, to reload the model */
+  customVersion: number;
 }
 
-function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
+function Avatar({ micStream, isThinking, audioElement, gender, customVersion }: AvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [head, setHead] = useState<TalkingHead | null>(null);
   const [progress, setProgress] = useState(0);
@@ -77,10 +106,14 @@ function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [usedDefault, setUsedDefault] = useState(false);
-  // The gender the shown model was loaded for, and the one most recently asked for
+  const [customFailed, setCustomFailed] = useState(false);
+  // The gender (and custom-avatar version) the shown model was loaded for, and the ones most recently asked for
   const loadedGenderRef = useRef<AvatarGender | null>(null);
+  const loadedVersionRef = useRef(customVersion);
   const wantedGenderRef = useRef(gender);
   wantedGenderRef.current = gender;
+  const wantedVersionRef = useRef(customVersion);
+  wantedVersionRef.current = customVersion;
 
   // Load the avatar and the audio-driven lip-sync
   useEffect(() => {
@@ -113,11 +146,14 @@ function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
           modelPixelRatio: Math.min(window.devicePixelRatio || 1, 2)
         });
         const initialGender = wantedGenderRef.current;
-        const fellBack = await showModel(instance, initialGender, (event) => {
+        const initialVersion = wantedVersionRef.current;
+        const result = await showModel(instance, initialGender, (event) => {
           if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
         });
         loadedGenderRef.current = initialGender;
-        setUsedDefault(fellBack);
+        loadedVersionRef.current = initialVersion;
+        setUsedDefault(result.usedDefault);
+        setCustomFailed(result.customFailed);
 
         const head = instance;
         const { audioCtx } = head;
@@ -204,25 +240,29 @@ function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
     };
   }, []);
 
-  // Swap the model when the gender changes, keeping the same audio and lip-sync setup
+  // Swap the model when the gender or the user's custom avatar changes, keeping the same audio and lip-sync setup
   useEffect(() => {
-    if (!head || loadedGenderRef.current === gender) return;
+    if (!head || (loadedGenderRef.current === gender && loadedVersionRef.current === customVersion)) return;
     let cancelled = false;
     setSwitching(true);
     setProgress(0);
     showModel(head, gender, (event) => {
       if (!cancelled && event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
     })
-      .then((fellBack) => {
+      .then((result) => {
         loadedGenderRef.current = gender;
-        if (!cancelled) setUsedDefault(fellBack);
+        loadedVersionRef.current = customVersion;
+        if (!cancelled) {
+          setUsedDefault(result.usedDefault);
+          setCustomFailed(result.customFailed);
+        }
       })
       .catch((err) => console.error('Switching the avatar failed:', err))
       .finally(() => !cancelled && setSwitching(false));
     return () => {
       cancelled = true;
     };
-  }, [head, gender]);
+  }, [head, gender, customVersion]);
 
   // Browsers keep the audio context suspended until the user interacts with the page
   useEffect(() => {
@@ -329,7 +369,12 @@ function Avatar({ micStream, isThinking, audioElement, gender }: AvatarProps) {
         <div ref={containerRef} className="avatar-stage" />
       </div>
       <p className="avatar-status" role="status">{status}</p>
-      {usedDefault && gender === 'M' && !failed && (
+      {customFailed && !failed && (
+        <p className="avatar-note">
+          Your custom {gender === 'M' ? 'male' : 'female'} avatar could not be loaded, so the built-in one is shown. Check it in Settings → Avatars.
+        </p>
+      )}
+      {usedDefault && gender === 'M' && !customFailed && !failed && (
         <p className="avatar-note">No male model installed, so the default avatar is shown. Add public/avatars/male.glb to change it.</p>
       )}
     </section>

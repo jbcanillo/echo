@@ -330,6 +330,10 @@ h1, h2, h3, p {
   text-transform: uppercase;
 }
 
+.counter.is-over {
+  color: var(--error);
+}
+
 .hint {
   color: var(--muted);
   font-size: 12px;
@@ -832,6 +836,11 @@ input[type='checkbox']:disabled {
 .status-message.success {
   color: #bbf7d9;
   border-color: rgba(16, 244, 156, 0.4);
+}
+
+.status-message.warn {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.5);
 }
 
 .dismiss-button {
@@ -1577,4 +1586,73 @@ input[type='range']:focus-visible {
 
 .docs-link {
   align-self: flex-start;
+}
+
+/* ---------- Install banner ---------- */
+
+.install-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: var(--glass-1);
+  border: 1px solid rgba(16, 244, 156, 0.25);
+  border-radius: var(--r-card);
+  box-shadow: var(--glow);
+}
+
+.install-icon {
+  flex: none;
+  border-radius: 10px;
+}
+
+.install-text {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.install-text strong {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.install-text span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.install-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.notify-ask {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* ---------- Avatar upload slots (Settings) ---------- */
+
+.avatar-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+}
+
+.avatar-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }

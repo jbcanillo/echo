@@ -5,7 +5,9 @@ import { History } from './History';
 import { WaveformPlayer } from './WaveformPlayer';
 import { LiveMeter } from './LiveMeter';
 import { Settings } from './Settings';
-import { API_BASE, DEFAULT_SYNTH, loadAvatarGender, loadSynth, saveAvatarGender, saveSynth, type SynthSettings } from './api';
+import { InstallBanner } from './InstallPrompt';
+import { enableNotifications, notify, useNotifyState } from './notify';
+import { API_BASE, DEFAULT_LIMITS, DEFAULT_SYNTH, fetchLimits, loadAvatarGender, loadSynth, saveAvatarGender, saveSynth, type Limits, type SynthSettings } from './api';
 import type { AvatarGender } from './Avatar';
 import { extensionFor, formatClock, formatTime, safeFilename } from './format';
 import { HistoryItem, SavedVoice, addHistoryItem, clearHistory, deleteHistoryItem, deleteVoice, listHistory, listVoices, newId, saveVoice } from './db';
@@ -13,7 +15,6 @@ import { HistoryItem, SavedVoice, addHistoryItem, clearHistory, deleteHistoryIte
 // Loaded separately so the 3D engine doesn't slow down the first paint
 const Avatar = lazy(() => import('./Avatar'));
 
-const MAX_TEXT_LENGTH = 5000;
 // Recording: aim for ~30 s, stop automatically at a minute
 const GOOD_RECORDING_MS = 20000;
 const TARGET_RECORDING_MS = 30000;
@@ -75,6 +76,10 @@ function App() {
   // The avatar is only loaded once the synthesize page has been opened
   const [synthVisited, setSynthVisited] = useState(false);
   const [synth, setSynth] = useState<SynthSettings>(loadSynth);
+  const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
+  const notifyState = useNotifyState();
+  // Bumped when a custom avatar is uploaded or removed in Settings, so the avatar reloads
+  const [avatarVersion, setAvatarVersion] = useState(0);
   const [gender, setGender] = useState<AvatarGender>(loadAvatarGender);
   const [sourceTab, setSourceTab] = useState<SourceTab>('record');
 
@@ -124,6 +129,21 @@ function App() {
 
   useEffect(() => saveSynth(synth), [synth]);
   useEffect(() => saveAvatarGender(gender), [gender]);
+
+  // Clicking a notification brings Echo to the front; show the page it was about
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'echo:notification-click') return;
+      setTab('synthesize');
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, []);
+
+  // The server decides the limits (they come from its .env), so read them instead of assuming
+  useEffect(() => {
+    fetchLimits().then((fetched) => fetched && setLimits(fetched));
+  }, []);
 
   // Keep the draft
   useEffect(() => {
@@ -331,9 +351,11 @@ function App() {
       }
       setText(data.text);
       setPrePolishText(null);
+      notify('Your script is ready', 'The AI finished writing it.', 'script-ready');
     } catch (err: any) {
       console.error('Text generation error:', err);
       setError(err.message || 'An error occurred during text generation');
+      notify('Writing failed', err.message || 'The AI could not write the script.', 'script-failed');
     } finally {
       setIsWriting(false);
     }
@@ -356,9 +378,11 @@ function App() {
       }
       setPrePolishText(text);
       setText(data.text);
+      notify('Wording polished', 'The rewritten text is ready.', 'script-ready');
     } catch (err: any) {
       console.error('Polish error:', err);
       setError(err.message || 'An error occurred while polishing the text');
+      notify('Polishing failed', err.message || 'The AI could not polish the text.', 'script-failed');
     } finally {
       setIsPolishing(false);
     }
@@ -366,7 +390,7 @@ function App() {
 
   // Generate voice
   const generateVoice = useCallback(async () => {
-    if (!audioSample || !text.trim() || !consent) return;
+    if (!audioSample || !text.trim() || !consent || text.length > limits.maxTextLength) return;
 
     setIsGenerating(true);
     setError(null);
@@ -402,6 +426,7 @@ function App() {
       setGeneratedName(`${safeFilename(voiceName)}_${Date.now()}.wav`);
       setGeneratedBlob(audioBlob);
       setSuccess('Voice generated. It was also saved to your history.');
+      notify('Your voice is ready', 'Tap to listen to it.', 'voice-ready');
       // Keep a copy on this device; failing to save must not fail the generation
       addHistoryItem({ id: newId(), text: text.trim(), voiceName, blob: audioBlob, createdAt: Date.now() })
         .then(refreshHistory)
@@ -412,12 +437,13 @@ function App() {
       } else {
         console.error('Generation error:', err);
         setError(err.message || 'An error occurred during voice generation');
+        notify('Voice generation failed', err.message || 'Something went wrong. Tap to see what.', 'voice-failed');
       }
     } finally {
       abortRef.current = null;
       setIsGenerating(false);
     }
-  }, [audioSample, text, consent, sampleLabel, synth, refreshHistory]);
+  }, [audioSample, text, consent, sampleLabel, synth, limits.maxTextLength, refreshHistory]);
 
   // Reset form
   const resetForm = useCallback(() => {
@@ -440,7 +466,7 @@ function App() {
   const busy = isGenerating || isWriting || isPolishing;
 
   // What is still needed before the voice can be generated
-  const missing = !audioSample ? 'Add a voice sample' : !text.trim() ? 'Write or paste the script' : !consent ? 'Confirm you have permission to use this voice' : '';
+  const missing = !audioSample ? 'Add a voice sample' : !text.trim() ? 'Write or paste the script' : !consent ? 'Confirm you have permission to use this voice' : text.length > limits.maxTextLength ? `Shorten the script to ${limits.maxTextLength} characters or fewer` : '';
   const steps = [
     { label: 'Voice', done: !!audioSample },
     { label: 'Script', done: !!text.trim() },
@@ -503,6 +529,8 @@ function App() {
           <IconSettings />
         </button>
       </header>
+
+      <InstallBanner />
 
       {/* Pages stay mounted (just hidden) so recordings, scripts and generated audio survive tab switches */}
 
@@ -616,7 +644,7 @@ function App() {
       <section className="panel" data-active={tab === 'synthesize'} aria-label="Synthesize">
         {synthVisited && (
           <Suspense fallback={null}>
-            <Avatar micStream={null} isThinking={isGenerating} audioElement={audioElement} gender={gender} />
+            <Avatar micStream={null} isThinking={isGenerating} audioElement={audioElement} gender={gender} customVersion={avatarVersion} />
           </Suspense>
         )}
 
@@ -658,7 +686,7 @@ function App() {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="e.g. Write me a 5 paragraph bedtime short story about friendly monsters"
               rows={2}
-              maxLength={1000}
+              maxLength={limits.maxPromptLength}
               disabled={busy}
             />
             <div className="prompt-foot">
@@ -683,7 +711,7 @@ function App() {
             }}
             placeholder="Type or paste what the cloned voice should say"
             rows={6}
-            maxLength={MAX_TEXT_LENGTH}
+            maxLength={limits.maxTextLength}
             disabled={isGenerating || isPolishing}
             aria-label="Text to synthesize"
           />
@@ -704,8 +732,8 @@ function App() {
                 </button>
               )}
             </div>
-            <span className="counter">
-              {text.length}/{MAX_TEXT_LENGTH}
+            <span className={`counter${text.length > limits.maxTextLength ? ' is-over' : ''}`}>
+              {text.length}/{limits.maxTextLength}
             </span>
           </div>
         </section>
@@ -722,7 +750,12 @@ function App() {
           <div className="generating" role="status">
             <div className="generating-info">
               <strong>Generating voice… {formatTime(elapsed / 1000)}</strong>
-              <span>The first run downloads the voice model, and long scripts take a while on CPU. You can leave this page open.</span>
+              <span>The first run downloads the voice model, and long scripts take a while on CPU. You can switch to another tab, but keep Echo open.</span>
+              {notifyState === 'off' && (
+                <button className="btn btn-secondary btn-sm notify-ask" onClick={() => enableNotifications()}>
+                  Notify me when it is done
+                </button>
+              )}
             </div>
             <button className="btn btn-ghost btn-sm" onClick={() => abortRef.current?.abort()}>
               Cancel
@@ -778,7 +811,7 @@ function App() {
       </section>
 
       <section className="panel" data-active={tab === 'settings'} aria-label="Settings">
-        <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} />
+        <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
       </section>
 
       <nav className="dock" aria-label="Main">

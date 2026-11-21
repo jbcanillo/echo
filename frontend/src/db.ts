@@ -15,7 +15,16 @@ export interface HistoryItem {
   createdAt: number;
 }
 
-type StoreName = 'voices' | 'history';
+export interface CustomAvatar {
+  /** Which slot it replaces: F = female, M = male */
+  gender: 'F' | 'M';
+  name: string;
+  size: number;
+  blob: Blob;
+  createdAt: number;
+}
+
+type StoreName = 'voices' | 'history' | 'avatars';
 
 const DB_NAME = 'echo';
 const MAX_HISTORY = 50;
@@ -25,11 +34,14 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1);
+      const request = indexedDB.open(DB_NAME, 2);
       request.onupgradeneeded = () => {
         const db = request.result;
-        db.createObjectStore('voices', { keyPath: 'id' });
-        db.createObjectStore('history', { keyPath: 'id' });
+        // Create only what is missing, so upgrading keeps existing voices and history
+        const stores: Array<[StoreName, string]> = [['voices', 'id'], ['history', 'id'], ['avatars', 'gender']];
+        for (const [name, keyPath] of stores) {
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => {
@@ -73,3 +85,7 @@ export async function addHistoryItem(item: HistoryItem): Promise<void> {
   const all = await listHistory();
   await Promise.all(all.slice(MAX_HISTORY).map((old) => deleteHistoryItem(old.id)));
 }
+
+export const getCustomAvatar = (gender: 'F' | 'M') => run<CustomAvatar | undefined>('avatars', 'readonly', (s) => s.get(gender));
+export const saveCustomAvatar = (avatar: CustomAvatar) => run('avatars', 'readwrite', (s) => s.put(avatar));
+export const deleteCustomAvatar = (gender: 'F' | 'M') => run('avatars', 'readwrite', (s) => s.delete(gender));

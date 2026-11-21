@@ -39,6 +39,30 @@ module.exports = function buildSpec({ maxTextLength, maxPromptLength, maxUploadM
           }
         }
       },
+      '/api/config': {
+        get: {
+          tags: ['System'],
+          summary: 'Effective limits',
+          description: 'The limits this server is currently enforcing. The web app reads them instead of hard-coding its own.',
+          responses: {
+            200: {
+              description: 'The current limits',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      maxTextLength: { type: 'integer', example: maxTextLength },
+                      maxPromptLength: { type: 'integer', example: maxPromptLength },
+                      maxUploadMb: { type: 'integer', example: maxUploadMb }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       '/api/generate-text': {
         post: {
           tags: ['Text'],
