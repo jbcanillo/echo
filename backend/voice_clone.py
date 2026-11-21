@@ -26,8 +26,13 @@ DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/your_tts"
 CJK_PACKAGES = {"cutlet", "fugashi", "unidic_lite", "pypinyin", "spacy_pkuseg", "hangul_romanize", "g2pk", "ko_speech_tools"}
 
 
+_loaded_name = None
+_job_model = None
+_license_accepted = False
+
+
 def model_name():
-    return os.getenv("TTS_MODEL_NAME") or DEFAULT_MODEL
+    return _job_model or os.getenv("TTS_MODEL_NAME") or DEFAULT_MODEL
 
 
 def is_xtts():
@@ -35,16 +40,25 @@ def is_xtts():
 
 
 def get_tts():
-    global _tts
+    global _tts, _loaded_name
+    if _tts is not None and _loaded_name != model_name():
+        # The user picked another model in Settings: free the old one first
+        _tts = None
+        import gc
+        gc.collect()
     if _tts is None:
-        if is_xtts() and os.environ.get("COQUI_TOS_AGREED") != "1":
+        if is_xtts() and os.environ.get("COQUI_TOS_AGREED") != "1" and not _license_accepted:
             # Without this, the library would ask the question on stdin, which is Echo's job channel, and hang
             raise RuntimeError(
                 "XTTS-v2 is released under the Coqui Public Model License (non-commercial use). "
-                "Read it at https://coqui.ai/cpml and, if you accept it, set COQUI_TOS_AGREED=1 in .env and restart."
+                "Read it at https://coqui.ai/cpml and, if you accept it, accept it in Settings (or set COQUI_TOS_AGREED=1 in .env and restart)."
             )
         from TTS.api import TTS
+        if is_xtts():
+            # The user accepted the license (in the app or in .env); the library would otherwise ask on stdin
+            os.environ["COQUI_TOS_AGREED"] = "1"
         _tts = TTS(model_name()).to("cpu")
+        _loaded_name = model_name()
     return _tts
 
 
@@ -119,6 +133,9 @@ def xtts_settings(job):
 
 
 def process(job):
+    global _job_model, _license_accepted
+    _job_model = job.get("model") or None
+    _license_accepted = bool(job.get("license_accepted"))
     voice_sample_path = job["voice_sample_path"]
     output_path = job["output_path"]
     text = job["text"]

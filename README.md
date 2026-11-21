@@ -477,8 +477,8 @@ All settings live in a single `.env` file at the repository root (copy `.env.exa
 | `CORS_ORIGIN` | *(all origins)* | Comma-separated allowed origins. **Set this in production** |
 | `OPENROUTER_API_KEY` | — | Optional. Enables **Write text** and **Polish wording**. Create one at [openrouter.ai](https://openrouter.ai/keys). A key saved on the [Settings](#settings) page takes precedence |
 | `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | OpenRouter model used for writing and polishing text |
-| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Coqui TTS voice-cloning model. Use `tts_models/multilingual/multi-dataset/xtts_v2` for 17 languages (see [Choosing the voice model](#choosing-the-voice-model)) |
-| `COQUI_TOS_AGREED` | *(unset)* | Set to `1` to accept the XTTS-v2 license. **XTTS-v2 will not run without it**, and Echo cannot accept it for you |
+| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Starting voice model, used until one is chosen in Settings (then the Settings choice wins). Use `tts_models/multilingual/multi-dataset/xtts_v2` for 17 languages (see [Choosing the voice model](#choosing-the-voice-model)) |
+| `COQUI_TOS_AGREED` | *(unset)* | Set to `1` to accept the XTTS-v2 license from `.env`. **XTTS-v2 will not run without the license accepted** (here or with the box in Settings), and Echo cannot accept it for you |
 | `XTTS_LANGUAGES` | `false` | Docker build only. `true` also installs the packages XTTS-v2 needs for Japanese, Korean and Chinese |
 | `MAX_UPLOAD_MB` | `20` | Largest accepted voice sample |
 | `MAX_TEXT_LENGTH` | `5000` | Longest accepted text, in characters |
@@ -554,7 +554,7 @@ A value in your `.env` overrides the built-in default. If you created `.env` fro
 
 **"XTTS-v2 is released under the Coqui Public Model License…" when generating a voice**
 
-`TTS_MODEL_NAME` selects XTTS-v2, but the license has not been accepted. Read the [license](https://coqui.ai/cpml) and, if you accept it, add `COQUI_TOS_AGREED=1` to `.env`, then restart the backend.
+XTTS-v2 is selected (with `TTS_MODEL_NAME`), but its license has not been accepted. Read the [license](https://coqui.ai/cpml) and, if you accept it, choose XTTS-v2 in Settings and tick the license box (or add `COQUI_TOS_AGREED=1` to `.env` and restart the backend).
 
 **"this language needs an extra Python package" with XTTS-v2**
 
@@ -684,7 +684,7 @@ echo/
 
 ### Choosing the Voice Model
 
-Echo supports two voice models. The language list and the tuning sliders in the app follow whichever one `TTS_MODEL_NAME` selects, and the server prints its choice when it starts (`Voice model: XTTS-v2 (17 languages)`).
+Echo supports two voice models. You pick one on the **Settings** page, under **Voice model**: choose it, press **Use this model**, and the next voice you generate loads it. The choice is saved on the server and applies to everyone using it. The language list and the tuning sliders in the app follow the active model. `TTS_MODEL_NAME` in `.env` is only the model used until someone picks one in Settings (and the way to run a model Echo has no profile for, which Settings shows as custom).
 
 | | YourTTS (default) | XTTS-v2 |
 |---|---|---|
@@ -701,9 +701,9 @@ Echo supports two voice models. The language list and the tuning sliders in the 
 To switch to XTTS-v2:
 
 1. Read the [Coqui Public Model License](https://coqui.ai/cpml). It restricts the model to non-commercial use.
-2. In `.env`, set `TTS_MODEL_NAME=tts_models/multilingual/multi-dataset/xtts_v2` and, **if you accept the license**, `COQUI_TOS_AGREED=1`. Echo deliberately cannot accept it for you: without that line the worker stops with a message instead of continuing.
+2. In Settings, choose **XTTS-v2**, tick the box saying you have read and accept the license, and press **Use this model**. Echo never accepts it for you: the button stays disabled until you tick the box, and the server refuses the change without an explicit acceptance (the acceptance is saved on the server, so it is asked once). Instead of the box you can set `COQUI_TOS_AGREED=1` in `.env`, or start from `TTS_MODEL_NAME=tts_models/multilingual/multi-dataset/xtts_v2`.
 3. For Japanese, Korean or Chinese, the extra language packages are needed. Locally: `pip install 'coqui-tts[ja,ko,zh]'`. With Docker, add `XTTS_LANGUAGES=true` to `.env`; it is read when the image is built.
-4. Restart the backend (with Docker, `docker compose up --build -d`). The first request downloads the model, which is large: on a slow connection raise `JOB_TIMEOUT_SECONDS` (and the nginx timeouts, see [Troubleshooting](#troubleshooting)).
+4. No restart is needed to switch (only for the Docker language packages in step 3). The first generation after switching downloads the model, which is large: on a slow connection raise `JOB_TIMEOUT_SECONDS` (and the nginx timeouts, see [Troubleshooting](#troubleshooting)).
 
 XTTS-v2 splits long text into sentences itself, and each language has its own limit for how long one sentence can be (about 250 characters for English, far fewer for Japanese or Korean), so very long unbroken sentences may be cut short. **XTTS-v2 support was written against the library's own code and tested with a stand-in model, because its weights could not be downloaded in the development environment. Expect to be the first to run it, and report anything odd.**
 

@@ -12,6 +12,24 @@ interface OpenRouterInfo {
   defaultModel: string;
 }
 
+interface VoiceModelOption {
+  id: string;
+  name: string;
+  note: string;
+  languageCount: number;
+  license: string | null;
+  requiresLicenseAcceptance: boolean;
+  licenseAccepted: boolean;
+}
+
+interface VoiceModelInfo {
+  active: string;
+  fromSettings: boolean;
+  options: VoiceModelOption[];
+  /** Set when the server runs a model Echo has no profile for (TTS_MODEL_NAME) */
+  custom: string | null;
+}
+
 interface SettingsProps {
   /** True while this page is the one shown, so the server state is refreshed on every visit */
   active: boolean;
@@ -21,6 +39,8 @@ interface SettingsProps {
   model: ModelInfo;
   /** Called when a custom avatar was uploaded or removed */
   onAvatarsChange: () => void;
+  /** Called after the voice model was changed, so the app re-reads the languages and sliders */
+  onModelChange: () => void;
 }
 
 const MODEL_SUGGESTIONS = ['openai/gpt-4o-mini', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'meta-llama/llama-3.3-70b-instruct'];
@@ -64,11 +84,16 @@ function Slider({ id, label, hint, min, max, step, value, defaultValue, format, 
   );
 }
 
-export function Settings({ active, synth, onSynthChange, model, onAvatarsChange }: SettingsProps) {
+export function Settings({ active, synth, onSynthChange, model, onAvatarsChange, onModelChange }: SettingsProps) {
   const [info, setInfo] = useState<OpenRouterInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [modelInput, setModelInput] = useState('');
+  const [voice, setVoice] = useState<VoiceModelInfo | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [accept, setAccept] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceMessage, setVoiceMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState<'save' | 'test' | 'remove' | null>(null);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
 
@@ -78,6 +103,10 @@ export function Settings({ active, synth, onSynthChange, model, onAvatarsChange 
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
       setInfo(data.openrouter);
+      if (data.voiceModel) {
+        setVoice(data.voiceModel);
+        setPick((current) => current ?? data.voiceModel.active);
+      }
       setModelInput((current) => current || data.openrouter.model);
       setLoadError(null);
     } catch (err: any) {
@@ -122,6 +151,31 @@ export function Settings({ active, synth, onSynthChange, model, onAvatarsChange 
     if (await call('remove', '/api/settings', { method: 'PUT', body: JSON.stringify({ openrouterApiKey: '' }) }, 'Key removed')) setKeyInput('');
   };
 
+  const chosen = voice?.options.find((o) => o.id === pick);
+  const needsLicense = Boolean(chosen && chosen.requiresLicenseAcceptance && !chosen.licenseAccepted);
+  const applyVoiceModel = async () => {
+    if (!chosen) return;
+    setVoiceBusy(true);
+    setVoiceMessage(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttsModel: chosen.id, ...(needsLicense ? { acceptLicense: true } : {}) })
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Request failed (HTTP ${response.status})`);
+      setVoice(data.voiceModel);
+      setAccept(false);
+      onModelChange();
+      setVoiceMessage({ kind: 'success', text: `${chosen.name} is now the voice model. It loads on your next generation, which can take a while the first time.` });
+    } catch (err: any) {
+      setVoiceMessage({ kind: 'error', text: err.message });
+    } finally {
+      setVoiceBusy(false);
+    }
+  };
+
   const set = (patch: Partial<SynthSettings>) => onSynthChange({ ...synth, ...patch });
 
   return (
@@ -129,6 +183,59 @@ export function Settings({ active, synth, onSynthChange, model, onAvatarsChange 
       <div className="page-title">
         <h2>Settings</h2>
       </div>
+
+      <section className="card" aria-labelledby="h-voice">
+        <h2 id="h-voice">
+          <span className="step">//</span> Voice model
+        </h2>
+        {voice?.custom ? (
+          <p className="hint">
+            The server uses a custom model (<code>{voice.custom}</code>) set with <code>TTS_MODEL_NAME</code>. Choosing one of the models below replaces it.
+          </p>
+        ) : (
+          <p className="hint">The model that clones the voice. It applies to everyone using this server, and only changes when you apply it.</p>
+        )}
+        {voice && (
+          <fieldset className="model-options" aria-label="Voice model">
+            
+            {voice.options.map((o) => (
+              <label key={o.id} className={`model-option ${pick === o.id ? 'is-picked' : ''}`}>
+                <input type="radio" name="voice-model" value={o.id} checked={pick === o.id} onChange={() => setPick(o.id)} />
+                <span>
+                  <b>{o.name}</b> · {o.languageCount} languages{o.id === voice.active && !voice.custom ? ' · in use' : ''}
+                  <br />
+                  <small>
+                    {o.note}
+                    {o.license ? ` License: ${o.license}.` : ''}
+                  </small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+        {needsLicense && chosen && (
+          <label className="check">
+            <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
+            <span>
+              I have read the <a href="https://coqui.ai/cpml" target="_blank" rel="noreferrer noopener">Coqui Public Model License</a> and accept it. {chosen.name} is for non-commercial use only.
+            </span>
+          </label>
+        )}
+        <div className="settings-actions">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={applyVoiceModel}
+            disabled={!voice || voiceBusy || !chosen || (chosen.id === voice.active && !voice.custom) || (needsLicense && !accept)}
+          >
+            {voiceBusy ? 'Applying…' : 'Use this model'}
+          </button>
+        </div>
+        {voiceMessage && (
+          <div className={`status-message ${voiceMessage.kind}`} role={voiceMessage.kind === 'error' ? 'alert' : 'status'}>
+            {voiceMessage.text}
+          </div>
+        )}
+      </section>
 
       <section className="card" aria-labelledby="h-synth">
         <h2 id="h-synth">

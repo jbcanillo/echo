@@ -1866,3 +1866,30 @@ input[type='range']:focus-visible {
 .avatar-window:has(.avatar-failed) .avatar-toggle {
   display: none;
 }
+
+/* Voice model picker */
+.model-options {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  margin: 12px 0;
+  padding: 0;
+}
+
+.model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.model-option.is-picked {
+  border-color: var(--accent, currentColor);
+}
+
+.model-option small {
+  color: var(--muted);
+}
