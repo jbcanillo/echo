@@ -6,7 +6,11 @@ services:
     depends_on:
       - backend
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # true installs the extra packages for Japanese, Korean and Chinese with XTTS-v2
+        XTTS_LANGUAGES: ${XTTS_LANGUAGES:-false}
     ports:
       - "8000:8000"
     env_file:

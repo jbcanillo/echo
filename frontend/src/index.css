@@ -1,10 +1,12 @@
 /* Echo: "Obsidian Waveform" design system (see DESIGN.md). Dark glass surfaces, mint/emerald/cyan accents. */
 
 :root {
-  /* Avatar window: --avatar-d is the avatar's diameter, --avatar-h the height the window takes along the top */
+  /* Phones: a fixed stack along the top, the title bar (--header-h) with the avatar window (--avatar-h) just below it.
+     --avatar-d is the avatar's diameter. */
   --avatar-d: 124px;
   --safe-top: env(safe-area-inset-top, 0px);
-  --avatar-h: calc(var(--safe-top) + var(--avatar-d) + 46px);
+  --header-h: 64px;
+  --avatar-h: calc(var(--avatar-d) + 46px);
 
   --canvas: #0b0f12;
   --glass-1: rgba(22, 29, 36, 0.7);
@@ -80,7 +82,7 @@ h1, h2, h3, p {
 
 /* Leave room for the fixed avatar window (see "Avatar window" below) */
 .app-content {
-  padding-top: calc(var(--avatar-h) + 16px);
+  padding-top: calc(var(--safe-top) + var(--header-h) + var(--avatar-h) + 16px);
 }
 
 .panel {
@@ -1698,10 +1700,25 @@ input[type='range']:focus-visible {
 
 /* ---------- Avatar window ---------- */
 
-/* Phones (portrait): fixed along the top of every page. The content scrolls underneath it. */
-.avatar-window {
+/* Phones (portrait): the title bar is fixed at the very top, with the avatar window just below it. The content scrolls under both. */
+.app-header {
   position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  box-sizing: border-box;
+  height: calc(var(--safe-top) + var(--header-h));
+  margin: 0;
+  /* Line up with the content column on a tablet held upright */
+  padding: var(--safe-top) max(16px, calc((100% - 608px) / 2)) 0;
+  background: var(--canvas);
+}
+
+/* The avatar window: fixed just under the title bar. The content scrolls under it. */
+.avatar-window {
+  position: fixed;
+  top: calc(var(--safe-top) + var(--header-h));
   left: 0;
   right: 0;
   z-index: 40;
@@ -1709,7 +1726,6 @@ input[type='range']:focus-visible {
   flex-direction: column;
   align-items: center;
   height: var(--avatar-h);
-  padding-top: var(--safe-top);
   /* Solid, then fading out, so scrolled content slides away behind it */
   background: linear-gradient(var(--canvas) 82%, transparent);
   pointer-events: none;
@@ -1727,7 +1743,7 @@ input[type='range']:focus-visible {
 
 .avatar-window .avatar-toggle {
   position: absolute;
-  top: calc(var(--safe-top) + 12px);
+  top: 12px;
   right: 12px;
   width: 112px;
   pointer-events: auto;
@@ -1747,7 +1763,7 @@ input[type='range']:focus-visible {
 }
 
 .app:has(.avatar-note) {
-  --avatar-h: calc(var(--safe-top) + var(--avatar-d) + 46px + 52px);
+  --avatar-h: calc(var(--avatar-d) + 46px + 52px);
 }
 
 /* Short screens, or a phone with its keyboard open: a smaller avatar */
@@ -1780,7 +1796,17 @@ input[type='range']:focus-visible {
     margin-right: auto;
   }
 
+  .app-header {
+    position: static;
+    z-index: auto;
+    height: auto;
+    margin-bottom: 20px;
+    padding: 0;
+    background: none;
+  }
+
   .avatar-window {
+    top: 0;
     left: auto;
     bottom: 0;
     justify-content: center;
@@ -1828,7 +1854,7 @@ input[type='range']:focus-visible {
 
 /* No WebGL: the window would only show an error line, so give the space back to the page */
 .app:has(.avatar-failed) {
-  --avatar-h: calc(var(--safe-top) + 56px);
+  --avatar-h: 40px;
 }
 
 .app:has(.avatar-failed) .avatar-window {

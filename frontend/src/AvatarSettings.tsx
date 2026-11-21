@@ -95,8 +95,13 @@ export function AvatarSettings({ onChange }: Props) {
             </li>
             <li>Follow its steps: add your photos, then choose the hair, clothes and look.</li>
             <li>
-              If it asks for the avatar type, choose <b>T2</b>. A T2 avatar has separate eyes and a mouth that can move; a T1 avatar has a fixed face, so its mouth would not follow the
-              voice.
+              Switch the avatar to <b>Type 2 (T2)</b>. In the editor, open the <b>Body type</b> panel and press the <b>Type</b> button at its top right. In the "Choose avatar type" window pick{' '}
+              <b>TYPE 2</b> (face blendshape support) and press <b>Switch</b>. <b>Type 1</b> has a static face with no blend shapes, so Echo rejects it: its mouth could not follow the voice. T2 may look a little
+              less like you than T1. See{' '}
+              <a href="https://docs.avaturn.me/docs/integration/bodies/" target="_blank" rel="noreferrer noopener">
+                Avaturn's docs on T1 and T2
+              </a>
+              .
             </li>
             <li>
               Export or download it as a <b>.glb</b> file (glTF 2.0).
@@ -104,7 +109,8 @@ export function AvatarSettings({ onChange }: Props) {
             <li>
               Come back here and press <b>Upload .glb</b> under Female or Male. The avatar appears in the avatar window straight away.
             </li>
-            <li>If Echo warns that no lip-sync blend shapes were found, that export has no face animation. Export it again as T2, or try another avatar.</li>
+            <li>If Echo says the avatar has no blend shapes, it was a T1 export. Export it again as T2, or try another source such as MPFB.</li>
+            <li>If Echo warns that no lip-sync shapes were found, the avatar loads but its mouth will not move. Try another export or avatar.</li>
           </ol>
           <p className="hint">
             Avaturn's screens change, so button names may differ. According to TalkingHead's documentation it is free for non-commercial use; check Avaturn's terms before using an avatar for

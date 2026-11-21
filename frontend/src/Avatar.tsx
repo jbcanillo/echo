@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { TalkingHead } from '@met4citizen/talkinghead';
 import { HeadAudio } from '@met4citizen/headaudio/dist/headaudio.min.mjs';
+import { connectAvatarAudio } from './avatarAudio';
 import { getCustomAvatar } from './db';
 import headWorkletUrl from '@met4citizen/headaudio/dist/headworklet.min.mjs?url';
 import visemeModelUrl from '@met4citizen/headaudio/dist/model-en-mixed.bin?url';
@@ -90,15 +91,13 @@ interface AvatarProps {
   micStream: MediaStream | null;
   /** True while the voice is being generated */
   isThinking: boolean;
-  /** The player for the generated voice; the avatar lip-syncs to whatever it plays */
-  audioElement: HTMLAudioElement | null;
   /** Which avatar to show; changing it swaps the model without rebuilding the audio setup */
   gender: AvatarGender;
   /** Bumped when the user uploads or removes a custom avatar in Settings, to reload the model */
   customVersion: number;
 }
 
-function Avatar({ micStream, isThinking, audioElement, gender, customVersion }: AvatarProps) {
+function Avatar({ micStream, isThinking, gender, customVersion }: AvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [head, setHead] = useState<TalkingHead | null>(null);
   const [progress, setProgress] = useState(0);
@@ -304,40 +303,75 @@ function Avatar({ micStream, isThinking, audioElement, gender, customVersion }: 
     };
   }, [head, isThinking]);
 
-  // Speaking: route the generated voice through the avatar so its lips follow the audio
+  // Speaking: route every player's audio through the avatar so its lips follow whichever one is playing
   useEffect(() => {
-    if (!head || !audioElement) return;
-    let source = mediaSources.get(audioElement);
-    if (!source) {
-      source = head.audioCtx.createMediaElementSource(audioElement);
-      mediaSources.set(audioElement, source);
-    }
-    source.connect(head.audioSpeechGainNode);
+    if (!head) return;
+    const playing = new Set<HTMLAudioElement>();
+    const wired = new Map<HTMLAudioElement, { source: MediaElementAudioSourceNode; onPlay: () => void; onStop: () => void }>();
 
-    const onPlay = () => {
-      head.audioCtx.resume();
-      head.isSpeaking = true;
-      head.stateName = 'speaking';
-      head.lookAtCamera(500);
-      setIsSpeaking(true);
+    const update = () => {
+      const speaking = playing.size > 0;
+      head.isSpeaking = speaking;
+      head.stateName = speaking ? 'speaking' : 'idle';
+      if (speaking) {
+        head.audioCtx.resume();
+        head.lookAtCamera(500);
+      }
+      setIsSpeaking(speaking);
     };
-    const onStop = () => {
-      head.isSpeaking = false;
-      head.stateName = 'idle';
-      setIsSpeaking(false);
+
+    const attach = (element: HTMLAudioElement) => {
+      if (wired.has(element)) return;
+      let source = mediaSources.get(element);
+      try {
+        if (!source) {
+          source = head.audioCtx.createMediaElementSource(element);
+          mediaSources.set(element, source);
+        }
+        source.connect(head.audioSpeechGainNode);
+      } catch (err) {
+        // The element is already tied to another audio context, so it keeps playing on its own, without lip-sync
+        console.warn('Could not connect a player to the avatar:', err);
+        return;
+      }
+      const onPlay = () => {
+        playing.add(element);
+        update();
+      };
+      const onStop = () => {
+        playing.delete(element);
+        update();
+      };
+      element.addEventListener('play', onPlay);
+      element.addEventListener('pause', onStop);
+      element.addEventListener('ended', onStop);
+      wired.set(element, { source, onPlay, onStop });
+      if (!element.paused && !element.ended) onPlay();
     };
-    if (!audioElement.paused && !audioElement.ended) onPlay();
-    audioElement.addEventListener('play', onPlay);
-    audioElement.addEventListener('pause', onStop);
-    audioElement.addEventListener('ended', onStop);
+
+    const detach = (element: HTMLAudioElement) => {
+      const entry = wired.get(element);
+      if (!entry) return;
+      element.removeEventListener('play', entry.onPlay);
+      element.removeEventListener('pause', entry.onStop);
+      element.removeEventListener('ended', entry.onStop);
+      wired.delete(element);
+      playing.delete(element);
+      update();
+      // A player that is going away no longer needs to be heard
+      try {
+        entry.source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    };
+
+    const disconnect = connectAvatarAudio({ attach, detach });
     return () => {
-      audioElement.removeEventListener('play', onPlay);
-      audioElement.removeEventListener('pause', onStop);
-      audioElement.removeEventListener('ended', onStop);
-      onStop();
-      source.disconnect();
+      disconnect();
+      for (const element of [...wired.keys()]) detach(element);
     };
-  }, [head, audioElement]);
+  }, [head]);
 
   let state = 'idle';
   let status = '';

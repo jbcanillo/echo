@@ -8,6 +8,7 @@ const appSettings = require('./settings');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const { describe: describeModel } = require('./models');
 const { spawn } = require('child_process');
 // One .env at the repository root is shared with Docker Compose and the frontend
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -19,6 +20,7 @@ app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS) || 1);
 const PORT = parseInt(process.env.PORT) || 8000;
 const HOST = process.env.HOST || '0.0.0.0';
 const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB) || 20;
+const TTS_MODEL_NAME = process.env.TTS_MODEL_NAME || 'tts_models/multilingual/multi-dataset/your_tts';
 const MAX_TEXT_LENGTH = parseInt(process.env.MAX_TEXT_LENGTH) || 5000;
 const MAX_PROMPT_LENGTH = 1000;
 const RATE_LIMIT_PER_MINUTE = parseInt(process.env.RATE_LIMIT_PER_MINUTE) || 5;
@@ -84,6 +86,9 @@ const settingsLimiter = rateLimit({
   message: { error: 'Too many requests, please try again in a minute' }
 });
 
+// What the active voice model can do (languages, which sliders apply). Chosen with TTS_MODEL_NAME.
+const voiceModel = describeModel(TTS_MODEL_NAME);
+
 // Synthesizer tuning sent with each cloning request. Ranges are generous but keep the model sane.
 const SYNTH_RANGES = {
   speed: [0.5, 2], // 1 = normal; higher is faster
@@ -106,7 +111,13 @@ function parseSynthSettings(body) {
     if (typeof body.language !== 'string' || !/^[a-z]{2}(-[a-z]{2})?$/i.test(body.language)) {
       return { error: 'language must be a code such as en, fr-fr or pt-br' };
     }
-    out.language = body.language.toLowerCase();
+    const language = body.language.toLowerCase();
+    // Only the languages the active voice model knows; anything else would fail deep inside the model
+    if (!voiceModel.languages.some((l) => l.code === language)) {
+      const supported = voiceModel.languages.map((l) => l.code).join(', ');
+      return { error: `language "${language}" is not supported by ${voiceModel.name || 'the voice model'}. Supported: ${supported}` };
+    }
+    out.language = language;
   }
   return { settings: out };
 }
@@ -203,7 +214,7 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(apiSpec, { customSiteTitle
 app.get('/api/settings', settingsLimiter, (req, res) => {
   res.json({
     openrouter: appSettings.publicOpenRouter(),
-    synthesizer: { ranges: SYNTH_RANGES, languages: ['en', 'fr-fr', 'pt-br'] }
+    synthesizer: { ranges: SYNTH_RANGES, languages: voiceModel.languages.map((l) => l.code), model: voiceModel.name || voiceModel.model }
   });
 });
 
@@ -263,7 +274,7 @@ app.get('/api/health', (req, res) => {
 
 // The limits actually in force, so the UI never has to guess (or hard-code) them
 app.get('/api/config', (req, res) => {
-  res.json({ maxTextLength: MAX_TEXT_LENGTH, maxPromptLength: MAX_PROMPT_LENGTH, maxUploadMb: MAX_UPLOAD_MB });
+  res.json({ maxTextLength: MAX_TEXT_LENGTH, maxPromptLength: MAX_PROMPT_LENGTH, maxUploadMb: MAX_UPLOAD_MB, synthesizer: voiceModel });
 });
 
 // Shared by the text endpoints: send a system + user message to OpenRouter and return the reply,
@@ -436,6 +447,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
   // A stale value in .env silently overrides the defaults, so show what is really in force
+  console.log(`Voice model: ${voiceModel.name || TTS_MODEL_NAME} (${voiceModel.languages.length} language${voiceModel.languages.length === 1 ? '' : 's'})`);
   console.log(
     `Limits: text ${MAX_TEXT_LENGTH} chars, prompt ${MAX_PROMPT_LENGTH} chars, upload ${MAX_UPLOAD_MB} MB, ` +
       `${RATE_LIMIT_PER_MINUTE} requests/min, job timeout ${JOB_TIMEOUT_MS / 1000}s`

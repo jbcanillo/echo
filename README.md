@@ -46,7 +46,7 @@ graph TB
     subgraph engineLayer["Voice Engine"]
         worker["Python Worker<br/>(voice_clone.py)<br/>Long-running · JSON lines over stdio"]
         ffmpeg["pydub + ffmpeg<br/>Sample conversion<br/>mono · 16-bit · 22.05 kHz"]
-        tts["Coqui TTS · YourTTS<br/>CPU · model loaded once<br/>cached in a volume"]
+        tts["Coqui TTS · YourTTS or XTTS-v2<br/>CPU · model loaded once<br/>cached in a volume"]
     end
 
     subgraph externalLayer["External (optional)"]
@@ -76,14 +76,14 @@ graph TB
 1. Optionally, the browser asks `POST /api/generate-text` to write a script from an idea, or `POST /api/enhance-text` to polish the wording. Both call OpenRouter and put the result in the text box, where you can edit it.
 2. The browser records (or uploads, or picks from the library) a voice sample and sends it with the text to `POST /api/clone-voice`.
 3. The API server validates the upload, consent and text, then queues a job for the Python worker. Jobs run one at a time.
-4. The worker converts the sample with ffmpeg and synthesizes the speech with YourTTS.
+4. The worker converts the sample with ffmpeg and synthesizes the speech with the voice model (YourTTS by default, or XTTS-v2).
 5. The API streams the resulting WAV back and deletes every temporary file. The browser keeps a copy in its history, and the avatar lip-syncs to the audio as it plays.
 
 ### Component Stack
 
 | Component | Technology | Role |
 |-----------|------------|------|
-| **Voice cloning** | [Coqui TTS](#coqui-tts) (`coqui-tts` fork) + YourTTS | Zero-shot voice cloning on CPU — ~425 MB model, no API cost |
+| **Voice cloning** | [Coqui TTS](#coqui-tts) (`coqui-tts` fork) + YourTTS (default) or XTTS-v2 | Zero-shot voice cloning on CPU, no API cost. YourTTS: 3 languages, ~425 MB. XTTS-v2: 17 languages, [much larger](#choosing-the-voice-model) |
 | **Audio preprocessing** | [pydub](https://github.com/jiaaro/pydub) + ffmpeg | Decodes any browser or uploaded format to mono 16-bit 22.05 kHz WAV |
 | **AI text** | [OpenRouter](#openrouter) | Optional: write a script from an idea, or polish wording so it sounds natural when spoken |
 | **API Server** | Node.js 20 + Express, multer, express-rate-limit, swagger-ui-express | REST API, uploads, consent, rate limiting, job queue, interactive docs |
@@ -232,15 +232,15 @@ The dev server reads the same root `.env` and proxies `/api` to `http://localhos
 
 ## Avatar
 
-The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**: along the top of the screen on a phone or a tablet held upright, and on the **right half of the screen, full height**, on a wide screen or a landscape phone or tablet, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**. On a phone or a tablet held upright, the title bar with the Settings button is fixed at the very top and the avatar window sits just below it. On a wide screen or a landscape phone or tablet, the avatar takes the **right half of the screen, full height**, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The avatar lip-syncs to **any audio played in Echo**: a newly generated voice, an item on the **History** or **Library** page, or the preview of your sample. The audio is analysed as it plays, so the lips follow pause and seek too, and the backend does nothing extra. Only one voice plays at a time: starting another stops the first.
 
 | State | Trigger | Ring and waveform |
 |-------|---------|-------------------|
 | **Thinking** | While the voice is generated | Cyan, slow |
-| **Speaking** | While the generated audio plays | Mint |
+| **Speaking** | While any audio plays in Echo | Mint |
 | **Idle** | Otherwise | Quiet mint |
 
-It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the top window shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
+It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the avatar bar shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
 
 **Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
 
@@ -260,7 +260,7 @@ A model without lip-sync shapes (`viseme_aa` or `jawOpen`) is accepted with a wa
 
 | Source | Cost | Notes |
 |--------|------|-------|
-| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible. A sample Avaturn export passes Echo's upload checks and loads and animates in the app |
+| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible: in the editor open **Body type**, press **Type** (top right), pick **TYPE 2** and press **Switch**. A sample Avaturn export passes Echo's upload checks and loads and animates in the app. Avaturn's **Type 1 (T1)** avatars have a fixed face with no blend shapes, so Echo rejects them |
 | [MPFB](https://static.makehumancommunity.org/mpfb.html) for Blender | Free, CC0 output | The most flexible, and how the bundled avatars started. Needs Blender; follow [TalkingHead's MPFB guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/MPFB/MPFB.md) |
 | [VRoid Studio](https://vroid.com/en/studio) | Free, permissive terms | Anime style. Its files must first be converted to TalkingHead's format in Blender, using [this guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/VRoid/VROID.md) |
 | [Avatar SDK (MetaPerson)](https://avatarsdk.com) | Commercial service | Realistic avatars from photos. Needs TalkingHead's conversion scripts |
@@ -330,9 +330,9 @@ The sliders icon in the top-right corner opens the Settings page.
 | **Speed** | How fast the voice speaks, 0.6× to 1.5× |
 | **Expressiveness** | How much pitch and tone vary. Lower is steadier and flatter, higher is livelier but less predictable |
 | **Rhythm variation** | How much timing and pauses vary |
-| **Language of the text** | English, French or Portuguese (Brazil), the languages of the YourTTS model |
+| **Language of the text** | The languages of the voice model in use: English, French and Portuguese (Brazil) for YourTTS, 17 languages for XTTS-v2. The list follows the model automatically |
 
-Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. These map to the YourTTS (VITS) length, noise and duration-noise scales. Pitch is not offered because the model has no pitch control.
+Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. With YourTTS these map to the VITS length, noise and duration-noise scales. With XTTS-v2, **Speed** is its `speed` and **Expressiveness** is its sampling temperature, and **Rhythm variation** is hidden because XTTS-v2 has no equivalent. Saved slider values belong to the model they were set for: when you switch models, they start again from the new model's defaults. Pitch is not offered because neither model has a pitch control.
 
 **Avatars** uploads your own female and male 3D avatars (see [Your Own Avatars](#your-own-avatars)). It links to [Avaturn](https://avaturn.me) and has a short step-by-step guide for making a free avatar there.
 
@@ -406,10 +406,10 @@ Form fields (`multipart/form-data`):
 | `voiceSample` | Yes | Audio file up to `MAX_UPLOAD_MB` — WAV, MP3, M4A, AAC, OGG, OPUS, WebM or FLAC |
 | `text` | Yes | Text to speak, up to `MAX_TEXT_LENGTH` characters |
 | `consent` | Yes | Must be `true`: confirms the speaker agreed to the cloning |
-| `language` | No | Language of the text: `en` (default), `fr-fr` or `pt-br` |
+| `language` | No | Language of the text: `en` (default). Must be one the active model supports: `en`, `fr-fr` or `pt-br` for YourTTS; `en`, `es`, `fr`, `de`, `it`, `pt`, `pl`, `tr`, `ru`, `nl`, `cs`, `ar`, `zh-cn`, `hu`, `ko`, `ja` or `hi` for XTTS-v2. `GET /api/config` lists them |
 | `speed` | No | `0.5` to `2`. `1` is the model default, higher is faster |
 | `expressiveness` | No | `0.1` to `1`. Lower sounds steadier and flatter |
-| `variation` | No | `0` to `1.5`. How much rhythm and pauses vary |
+| `variation` | No | `0` to `1.5`. How much rhythm and pauses vary. Ignored by XTTS-v2 |
 | `enhance` | No | `true` to rewrite the text via OpenRouter first. The Echo app no longer sends this and uses `/api/enhance-text` instead |
 
 A successful request returns `200` with `Content-Type: audio/wav` and `Content-Disposition: attachment; filename="cloned_voice.wav"`.
@@ -477,7 +477,9 @@ All settings live in a single `.env` file at the repository root (copy `.env.exa
 | `CORS_ORIGIN` | *(all origins)* | Comma-separated allowed origins. **Set this in production** |
 | `OPENROUTER_API_KEY` | — | Optional. Enables **Write text** and **Polish wording**. Create one at [openrouter.ai](https://openrouter.ai/keys). A key saved on the [Settings](#settings) page takes precedence |
 | `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | OpenRouter model used for writing and polishing text |
-| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Coqui TTS voice-cloning model |
+| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | Coqui TTS voice-cloning model. Use `tts_models/multilingual/multi-dataset/xtts_v2` for 17 languages (see [Choosing the voice model](#choosing-the-voice-model)) |
+| `COQUI_TOS_AGREED` | *(unset)* | Set to `1` to accept the XTTS-v2 license. **XTTS-v2 will not run without it**, and Echo cannot accept it for you |
+| `XTTS_LANGUAGES` | `false` | Docker build only. `true` also installs the packages XTTS-v2 needs for Japanese, Korean and Chinese |
 | `MAX_UPLOAD_MB` | `20` | Largest accepted voice sample |
 | `MAX_TEXT_LENGTH` | `5000` | Longest accepted text, in characters |
 | `JOB_TIMEOUT_SECONDS` | `600` | Per-request synthesis timeout (covers the first-run model download) |
@@ -550,6 +552,18 @@ On a slow connection, raise `JOB_TIMEOUT_SECONDS`. If you raise it above 600, al
 
 A value in your `.env` overrides the built-in default. If you created `.env` from an older `.env.example`, it may still contain `MAX_TEXT_LENGTH=1000`. Set it to `5000` (or delete the line), then restart the backend. The first lines the server prints when it starts show the limits it is really using (`Limits: text 1000 chars, …`), and the counter under the script box follows them.
 
+**"XTTS-v2 is released under the Coqui Public Model License…" when generating a voice**
+
+`TTS_MODEL_NAME` selects XTTS-v2, but the license has not been accepted. Read the [license](https://coqui.ai/cpml) and, if you accept it, add `COQUI_TOS_AGREED=1` to `.env`, then restart the backend.
+
+**"this language needs an extra Python package" with XTTS-v2**
+
+Japanese, Korean and Chinese need extra packages. Install them with `pip install 'coqui-tts[ja,ko,zh]'`, or with Docker set `XTTS_LANGUAGES=true` in `.env` and rebuild the image.
+
+**"language … is not supported by …"**
+
+The language you chose isn't one the current voice model knows (for example `es` with YourTTS). Pick one from the list in Settings, or switch the model: see [Choosing the voice model](#choosing-the-voice-model).
+
 **`Voice cloning failed` with `KeyError: 'yourtts'`**
 
 Your `.env` was copied from an older `.env.example` and still has the wrong model ID. Set it to the correct one, or delete the line to use the default:
@@ -569,6 +583,10 @@ ffmpeg could not decode the sample. The Docker image includes ffmpeg; in local d
 **`429 Too many requests` although only one person is using Echo**
 
 Behind the bundled nginx all browsers share one counter (see [Limits and Rate Limiting](#limits-and-rate-limiting)). Wait a minute or raise `RATE_LIMIT_PER_MINUTE`.
+
+**"This Avaturn avatar has no face blend shapes" when uploading an avatar**
+
+The file is a Type 1 (T1) Avaturn avatar. Avaturn's docs describe T1 as the fixed-face type, with no blend shapes, so nothing can move its mouth. Type 2 (T2) avatars have separate eyeballs and a mouth that can be animated with ARKit blend shapes and visemes. In Avaturn's editor, open **Body type**, press **Type**, choose **TYPE 2** and press **Switch**, then export again. Or use another source from [Where to Get Avatars](#where-to-get-avatars).
 
 **Microphone access not working**
 
@@ -660,13 +678,34 @@ echo/
 
 - **Model:** `tts_models/multilingual/multi-dataset/your_tts` (~425 MB), downloaded on first use
 - **Runs on CPU:** the Docker image installs the CPU-only PyTorch build, which keeps it much smaller than the default CUDA build
-- **Output:** mono WAV at 16 kHz. Speech is generated in English
+- **Output:** mono WAV at 16 kHz with YourTTS
 - **Cache:** the `tts-models` volume in Docker, or `TTS_HOME` locally
 - **License:** the YourTTS model is **CC BY-NC-ND 4.0, non-commercial only** (see [License](#license))
 
-### Using Another Model
+### Choosing the Voice Model
 
-Set `TTS_MODEL_NAME` in `.env` to another Coqui voice-cloning model, for example `tts_models/multilingual/multi-dataset/xtts_v2`. Only YourTTS has been tested with Echo, and `xtts_v2` is released under the non-commercial CPML license.
+Echo supports two voice models. The language list and the tuning sliders in the app follow whichever one `TTS_MODEL_NAME` selects, and the server prints its choice when it starts (`Voice model: XTTS-v2 (17 languages)`).
+
+| | YourTTS (default) | XTTS-v2 |
+|---|---|---|
+| `TTS_MODEL_NAME` | `tts_models/multilingual/multi-dataset/your_tts` | `tts_models/multilingual/multi-dataset/xtts_v2` |
+| Languages | English, French, Portuguese (Brazil) | 17 (below) |
+| Download | ~425 MB | much larger (a couple of GB) |
+| Speed on CPU | fast | slower; not measured |
+| Sliders | Speed, Expressiveness, Rhythm variation | Speed, Expressiveness (no Rhythm variation) |
+| License | CC BY-NC-ND 4.0 | Coqui Public Model License |
+| Commercial use | No | No |
+
+**XTTS-v2 languages:** English, Spanish, French, German, Italian, Portuguese, Polish, Turkish, Russian, Dutch, Czech, Arabic, Chinese, Hungarian, Korean, Japanese and Hindi. **Neither model supports Filipino/Tagalog.**
+
+To switch to XTTS-v2:
+
+1. Read the [Coqui Public Model License](https://coqui.ai/cpml). It restricts the model to non-commercial use.
+2. In `.env`, set `TTS_MODEL_NAME=tts_models/multilingual/multi-dataset/xtts_v2` and, **if you accept the license**, `COQUI_TOS_AGREED=1`. Echo deliberately cannot accept it for you: without that line the worker stops with a message instead of continuing.
+3. For Japanese, Korean or Chinese, the extra language packages are needed. Locally: `pip install 'coqui-tts[ja,ko,zh]'`. With Docker, add `XTTS_LANGUAGES=true` to `.env`; it is read when the image is built.
+4. Restart the backend (with Docker, `docker compose up --build -d`). The first request downloads the model, which is large: on a slow connection raise `JOB_TIMEOUT_SECONDS` (and the nginx timeouts, see [Troubleshooting](#troubleshooting)).
+
+XTTS-v2 splits long text into sentences itself, and each language has its own limit for how long one sentence can be (about 250 characters for English, far fewer for Japanese or Korean), so very long unbroken sentences may be cut short. **XTTS-v2 support was written against the library's own code and tested with a stand-in model, because its weights could not be downloaded in the development environment. Expect to be the first to run it, and report anything odd.**
 
 ---
 
@@ -705,7 +744,8 @@ Third-party components keep their own licenses:
 | three.js, React, vite-plugin-pwa | MIT |
 | `coqui-tts` | MPL-2.0 |
 | **YourTTS voice model** | **CC BY-NC-ND 4.0 — non-commercial use only** |
+| **XTTS-v2 voice model** (optional) | **Coqui Public Model License — non-commercial use only** |
 | Placeholder avatars `generic.glb` (MPFB sample) and `male.glb` (the same model reshaped with MakeHuman's gender targets) | CC0 |
 | Geist, JetBrains Mono fonts | OFL-1.1 |
 
-> **Commercial use:** because of the YourTTS model license, using Echo's output commercially requires replacing the model with one whose license allows it.
+> **Commercial use:** because of the YourTTS and XTTS-v2 model licenses, using Echo's output commercially requires replacing the model with one whose license allows it.
