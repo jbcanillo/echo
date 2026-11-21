@@ -74,7 +74,6 @@ const IconHistory = () => (
 function App() {
   const [tab, setTab] = useState<Tab>('sample');
   // The avatar is only loaded once the synthesize page has been opened
-  const [synthVisited, setSynthVisited] = useState(false);
   const [synth, setSynth] = useState<SynthSettings>(loadSynth);
   const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
   const notifyState = useNotifyState();
@@ -249,7 +248,6 @@ function App() {
   }, [isRecording, recordingTime, stopRecording]);
 
   useEffect(() => {
-    if (tab === 'synthesize') setSynthVisited(true);
     // A recording can't continue once you leave the sample page
     if (tab !== 'sample') stopRecording();
   }, [tab, stopRecording]);
@@ -513,141 +511,11 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <img className="app-logo" src={`${import.meta.env.BASE_URL}logo.webp`} alt="" width={44} height={44} />
-        <div className="app-title">
-          <h1>Echo</h1>
-          <p>Voice cloning studio</p>
-        </div>
-        <button
-          className={`icon-btn${tab === 'settings' ? ' is-active' : ''}`}
-          onClick={() => setTab(tab === 'settings' ? 'sample' : 'settings')}
-          disabled={isRecording}
-          aria-label="Settings"
-          aria-current={tab === 'settings' ? 'page' : undefined}
-        >
-          <IconSettings />
-        </button>
-      </header>
-
-      <InstallBanner />
-
-      {/* Pages stay mounted (just hidden) so recordings, scripts and generated audio survive tab switches */}
-
-      {/* PAGE 1: voice sample */}
-      <main className="panel" data-active={tab === 'sample'}>
-        {stepper}
-
-        <section className="card" aria-labelledby="h-sample">
-          <h2 id="h-sample">
-            <span className="step">01 //</span> Voice sample
-          </h2>
-
-          <div className="segmented" role="tablist" aria-label="Sample source">
-            {(
-              [
-                ['record', 'Record'],
-                ['upload', 'Upload'],
-                ['library', `Library${voices.length ? ` (${voices.length})` : ''}`]
-              ] as const
-            ).map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={sourceTab === id} onClick={() => setSourceTab(id)} disabled={isRecording}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {audioSample && !isRecording ? (
-            <div className="sample-preview">
-              <WaveformPlayer blob={audioSample} title={sampleLabel || audioSample.name} downloadName={audioSample.name}>
-                <button className="btn btn-ghost btn-sm" onClick={() => clearSample(sourceTab === 'record')}>
-                  {sourceTab === 'record' ? 'Retake' : 'Change'}
-                </button>
-              </WaveformPlayer>
-              <div className="sample-actions">
-                {savedVoiceId ? (
-                  <span className="chip chip-ok">Saved in library</span>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      className="name-input"
-                      value={saveName}
-                      onChange={(e) => setSaveName(e.target.value)}
-                      placeholder="Name this voice to reuse it later"
-                      maxLength={40}
-                      aria-label="Voice name"
-                    />
-                    <button className="btn btn-secondary btn-sm" onClick={saveToLibrary}>
-                      Save to library
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : sourceTab === 'record' ? (
-            <>
-              <div className="reading">
-                <span className="label">Read this aloud in your natural voice</span>
-                <blockquote className="reading-passage">{READING_PASSAGE}</blockquote>
-                <details className="tips">
-                  <summary>Recording tips</summary>
-                  <ul>
-                    <li>Find a quiet room and hold the microphone about a hand-width from your mouth.</li>
-                    <li>Speak clearly at a steady pace with normal expression. Don't whisper or shout.</li>
-                    <li>Re-record if you stumble or hear background noise.</li>
-                  </ul>
-                </details>
-              </div>
-
-              {isRecording && micStream && (
-                <div className="recording-panel">
-                  <LiveMeter stream={micStream} />
-                  <div className="goal" aria-hidden="true">
-                    <div className="goal-fill" style={{ width: `${Math.min(100, (recordingTime / TARGET_RECORDING_MS) * 100)}%` }} />
-                  </div>
-                  <p className="hint">{recordingHint}</p>
-                </div>
-              )}
-
-              <div className="record-row">
-                <button
-                  className={`btn record-btn${isRecording ? ' is-recording' : ''}`}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isGenerating}
-                >
-                  <span className="rec-dot" aria-hidden="true" />
-                  {isRecording ? 'Stop recording' : 'Start recording'}
-                </button>
-                <span className={`clock${isRecording ? ' live' : ''}`}>{formatClock(recordingTime)}</span>
-              </div>
-            </>
-          ) : sourceTab === 'upload' ? (
-            <>
-              <input type="file" accept="audio/*" onChange={handleFileUpload} disabled={isGenerating} aria-label="Upload an audio sample" />
-              <p className="hint">Clear speech, 20–30 seconds, no music or background noise works best.</p>
-            </>
-          ) : (
-            <Library voices={voices} activeId={savedVoiceId} onUse={useLibraryVoice} onDelete={removeVoice} />
-          )}
-        </section>
-
-        {messages}
-
-        <button className="btn btn-primary btn-lg" onClick={() => setTab('synthesize')} disabled={!audioSample || isRecording}>
-          Continue to script
-        </button>
-        {!audioSample && <p className="hint next-step">Record, upload or pick a voice to continue</p>}
-      </main>
-
-      {/* PAGE 2: script, synthesis and the avatar */}
-      <section className="panel" data-active={tab === 'synthesize'} aria-label="Synthesize">
-        {synthVisited && (
-          <Suspense fallback={null}>
-            <Avatar micStream={null} isThinking={isGenerating} audioElement={audioElement} gender={gender} customVersion={avatarVersion} />
-          </Suspense>
-        )}
-
+      {/* The avatar window is fixed on every page: along the top on a phone, the right half of the screen on a wide one */}
+      <aside className="avatar-window" aria-label="Avatar">
+        <Suspense fallback={null}>
+          <Avatar micStream={null} isThinking={isGenerating} audioElement={audioElement} gender={gender} customVersion={avatarVersion} />
+        </Suspense>
         <div className="segmented avatar-toggle" role="radiogroup" aria-label="Avatar">
           {(
             [
@@ -660,159 +528,292 @@ function App() {
             </button>
           ))}
         </div>
+      </aside>
 
-        {stepper}
-
-        <div className="voice-summary">
-          <div>
-            <span className="label">Voice</span>
-            <strong>{audioSample ? sampleLabel || audioSample.name : 'None selected'}</strong>
+      <div className="app-content">
+        <header className="app-header">
+          <img className="app-logo" src={`${import.meta.env.BASE_URL}logo.webp`} alt="" width={44} height={44} />
+          <div className="app-title">
+            <h1>Echo</h1>
+            <p>Voice cloning studio</p>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setTab('sample')} disabled={isGenerating}>
-            {audioSample ? 'Change' : 'Choose voice'}
+          <button
+            className={`icon-btn${tab === 'settings' ? ' is-active' : ''}`}
+            onClick={() => setTab(tab === 'settings' ? 'sample' : 'settings')}
+            disabled={isRecording}
+            aria-label="Settings"
+            aria-current={tab === 'settings' ? 'page' : undefined}
+          >
+            <IconSettings />
           </button>
-        </div>
+        </header>
 
-        <section className="card" aria-labelledby="h-text">
-          <h2 id="h-text">
-            <span className="step">02 //</span> Script
-          </h2>
+        <InstallBanner />
 
-          <div className="prompt-box">
-            <label htmlFor="ai-prompt">Let AI write it for you (optional)</label>
-            <textarea
-              id="ai-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. Write me a 5 paragraph bedtime short story about friendly monsters"
-              rows={2}
-              maxLength={limits.maxPromptLength}
-              disabled={busy}
-            />
-            <div className="prompt-foot">
-              <p className="hint">
-                Needs an OpenRouter key from{' '}
-                <button className="link-btn" onClick={() => setTab('settings')}>
-                  Settings
+        {/* Pages stay mounted (just hidden) so recordings, scripts and generated audio survive tab switches */}
+
+        {/* PAGE 1: voice sample */}
+        <main className="panel" data-active={tab === 'sample'}>
+          {stepper}
+
+          <section className="card" aria-labelledby="h-sample">
+            <h2 id="h-sample">
+              <span className="step">01 //</span> Voice sample
+            </h2>
+
+            <div className="segmented" role="tablist" aria-label="Sample source">
+              {(
+                [
+                  ['record', 'Record'],
+                  ['upload', 'Upload'],
+                  ['library', `Library${voices.length ? ` (${voices.length})` : ''}`]
+                ] as const
+              ).map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={sourceTab === id} onClick={() => setSourceTab(id)} disabled={isRecording}>
+                  {label}
                 </button>
-                . The result appears below, ready to edit.
-              </p>
-              <button className="btn btn-secondary btn-sm" onClick={generateText} disabled={!prompt.trim() || busy} aria-busy={isWriting}>
-                {isWriting ? 'Writing…' : 'Write text'}
-              </button>
+              ))}
             </div>
-          </div>
 
-          <textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setPrePolishText(null);
-            }}
-            placeholder="Type or paste what the cloned voice should say"
-            rows={6}
-            maxLength={limits.maxTextLength}
-            disabled={isGenerating || isPolishing}
-            aria-label="Text to synthesize"
-          />
-          <div className="text-options">
-            <div className="polish-actions">
-              <button className="btn btn-secondary btn-sm" onClick={polishText} disabled={!text.trim() || busy} aria-busy={isPolishing}>
-                {isPolishing ? 'Polishing…' : 'Polish wording'}
-              </button>
-              {prePolishText !== null && !isPolishing && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    setText(prePolishText);
-                    setPrePolishText(null);
-                  }}
-                >
-                  Undo
-                </button>
-              )}
+            {audioSample && !isRecording ? (
+              <div className="sample-preview">
+                <WaveformPlayer blob={audioSample} title={sampleLabel || audioSample.name} downloadName={audioSample.name}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => clearSample(sourceTab === 'record')}>
+                    {sourceTab === 'record' ? 'Retake' : 'Change'}
+                  </button>
+                </WaveformPlayer>
+                <div className="sample-actions">
+                  {savedVoiceId ? (
+                    <span className="chip chip-ok">Saved in library</span>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        className="name-input"
+                        value={saveName}
+                        onChange={(e) => setSaveName(e.target.value)}
+                        placeholder="Name this voice to reuse it later"
+                        maxLength={40}
+                        aria-label="Voice name"
+                      />
+                      <button className="btn btn-secondary btn-sm" onClick={saveToLibrary}>
+                        Save to library
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : sourceTab === 'record' ? (
+              <>
+                <div className="reading">
+                  <span className="label">Read this aloud in your natural voice</span>
+                  <blockquote className="reading-passage">{READING_PASSAGE}</blockquote>
+                  <details className="tips">
+                    <summary>Recording tips</summary>
+                    <ul>
+                      <li>Find a quiet room and hold the microphone about a hand-width from your mouth.</li>
+                      <li>Speak clearly at a steady pace with normal expression. Don't whisper or shout.</li>
+                      <li>Re-record if you stumble or hear background noise.</li>
+                    </ul>
+                  </details>
+                </div>
+
+                {isRecording && micStream && (
+                  <div className="recording-panel">
+                    <LiveMeter stream={micStream} />
+                    <div className="goal" aria-hidden="true">
+                      <div className="goal-fill" style={{ width: `${Math.min(100, (recordingTime / TARGET_RECORDING_MS) * 100)}%` }} />
+                    </div>
+                    <p className="hint">{recordingHint}</p>
+                  </div>
+                )}
+
+                <div className="record-row">
+                  <button
+                    className={`btn record-btn${isRecording ? ' is-recording' : ''}`}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={isGenerating}
+                  >
+                    <span className="rec-dot" aria-hidden="true" />
+                    {isRecording ? 'Stop recording' : 'Start recording'}
+                  </button>
+                  <span className={`clock${isRecording ? ' live' : ''}`}>{formatClock(recordingTime)}</span>
+                </div>
+              </>
+            ) : sourceTab === 'upload' ? (
+              <>
+                <input type="file" accept="audio/*" onChange={handleFileUpload} disabled={isGenerating} aria-label="Upload an audio sample" />
+                <p className="hint">Clear speech, 20–30 seconds, no music or background noise works best.</p>
+              </>
+            ) : (
+              <Library voices={voices} activeId={savedVoiceId} onUse={useLibraryVoice} onDelete={removeVoice} />
+            )}
+          </section>
+
+          {messages}
+
+          <button className="btn btn-primary btn-lg" onClick={() => setTab('synthesize')} disabled={!audioSample || isRecording}>
+            Continue to script
+          </button>
+          {!audioSample && <p className="hint next-step">Record, upload or pick a voice to continue</p>}
+        </main>
+
+        {/* PAGE 2: script and synthesis */}
+        <section className="panel" data-active={tab === 'synthesize'} aria-label="Synthesize">
+          {stepper}
+
+          <div className="voice-summary">
+            <div>
+              <span className="label">Voice</span>
+              <strong>{audioSample ? sampleLabel || audioSample.name : 'None selected'}</strong>
             </div>
-            <span className={`counter${text.length > limits.maxTextLength ? ' is-over' : ''}`}>
-              {text.length}/{limits.maxTextLength}
-            </span>
-          </div>
-        </section>
-
-        {/* Consent */}
-        <label className={`consent${consent ? ' is-on' : ''}`}>
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={isGenerating} />
-          <span>This is my voice, or I have the speaker's permission to clone it.</span>
-        </label>
-
-        {messages}
-
-        {isGenerating ? (
-          <div className="generating" role="status">
-            <div className="generating-info">
-              <strong>Generating voice… {formatTime(elapsed / 1000)}</strong>
-              <span>The first run downloads the voice model, and long scripts take a while on CPU. You can switch to another tab, but keep Echo open.</span>
-              {notifyState === 'off' && (
-                <button className="btn btn-secondary btn-sm notify-ask" onClick={() => enableNotifications()}>
-                  Notify me when it is done
-                </button>
-              )}
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => abortRef.current?.abort()}>
-              Cancel
+            <button className="btn btn-ghost btn-sm" onClick={() => setTab('sample')} disabled={isGenerating}>
+              {audioSample ? 'Change' : 'Choose voice'}
             </button>
           </div>
-        ) : (
-          <div className="actions-wrap">
-            <div className="actions">
-              <button onClick={generateVoice} disabled={!!missing || busy} className="btn btn-primary btn-lg">
-                Synthesize audio
-              </button>
-              <button onClick={resetForm} disabled={busy} className="btn btn-ghost btn-lg">
-                Reset
+
+          <section className="card" aria-labelledby="h-text">
+            <h2 id="h-text">
+              <span className="step">02 //</span> Script
+            </h2>
+
+            <div className="prompt-box">
+              <label htmlFor="ai-prompt">Let AI write it for you (optional)</label>
+              <textarea
+                id="ai-prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g. Write me a 5 paragraph bedtime short story about friendly monsters"
+                rows={2}
+                maxLength={limits.maxPromptLength}
+                disabled={busy}
+              />
+              <div className="prompt-foot">
+                <p className="hint">
+                  Needs an OpenRouter key from{' '}
+                  <button className="link-btn" onClick={() => setTab('settings')}>
+                    Settings
+                  </button>
+                  . The result appears below, ready to edit.
+                </p>
+                <button className="btn btn-secondary btn-sm" onClick={generateText} disabled={!prompt.trim() || busy} aria-busy={isWriting}>
+                  {isWriting ? 'Writing…' : 'Write text'}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setPrePolishText(null);
+              }}
+              placeholder="Type or paste what the cloned voice should say"
+              rows={6}
+              maxLength={limits.maxTextLength}
+              disabled={isGenerating || isPolishing}
+              aria-label="Text to synthesize"
+            />
+            <div className="text-options">
+              <div className="polish-actions">
+                <button className="btn btn-secondary btn-sm" onClick={polishText} disabled={!text.trim() || busy} aria-busy={isPolishing}>
+                  {isPolishing ? 'Polishing…' : 'Polish wording'}
+                </button>
+                {prePolishText !== null && !isPolishing && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setText(prePolishText);
+                      setPrePolishText(null);
+                    }}
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
+              <span className={`counter${text.length > limits.maxTextLength ? ' is-over' : ''}`}>
+                {text.length}/{limits.maxTextLength}
+              </span>
+            </div>
+          </section>
+
+          {/* Consent */}
+          <label className={`consent${consent ? ' is-on' : ''}`}>
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={isGenerating} />
+            <span>This is my voice, or I have the speaker's permission to clone it.</span>
+          </label>
+
+          {messages}
+
+          {isGenerating ? (
+            <div className="generating" role="status">
+              <div className="generating-info">
+                <strong>Generating voice… {formatTime(elapsed / 1000)}</strong>
+                <span>The first run downloads the voice model, and long scripts take a while on CPU. You can switch to another tab, but keep Echo open.</span>
+                {notifyState === 'off' && (
+                  <button className="btn btn-secondary btn-sm notify-ask" onClick={() => enableNotifications()}>
+                    Notify me when it is done
+                  </button>
+                )}
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => abortRef.current?.abort()}>
+                Cancel
               </button>
             </div>
-            {missing && <p className="hint next-step">Next: {missing}</p>}
+          ) : (
+            <div className="actions-wrap">
+              <div className="actions">
+                <button onClick={generateVoice} disabled={!!missing || busy} className="btn btn-primary btn-lg">
+                  Synthesize audio
+                </button>
+                <button onClick={resetForm} disabled={busy} className="btn btn-ghost btn-lg">
+                  Reset
+                </button>
+              </div>
+              {missing && <p className="hint next-step">Next: {missing}</p>}
+            </div>
+          )}
+
+          {/* Output */}
+          {generatedBlob && (
+            <section className="card card-glow" aria-labelledby="h-out" ref={outputRef}>
+              <h2 id="h-out">
+                <span className="step">03 //</span> Generated voice
+              </h2>
+              <WaveformPlayer blob={generatedBlob} title={generatedName} downloadName={generatedName} autoPlay onAudioElement={setAudioElement} />
+            </section>
+          )}
+        </section>
+
+        <section className="panel" data-active={tab === 'library'} aria-label="Voice library">
+          <div className="page-title">
+            <h2>Library</h2>
+            <span className="meta">{voices.length} saved</span>
           </div>
-        )}
+          <Library
+            voices={voices}
+            activeId={savedVoiceId}
+            onUse={(voice) => {
+              useLibraryVoice(voice);
+              setTab('synthesize');
+            }}
+            onDelete={removeVoice}
+          />
+        </section>
 
-        {/* Output */}
-        {generatedBlob && (
-          <section className="card card-glow" aria-labelledby="h-out" ref={outputRef}>
-            <h2 id="h-out">
-              <span className="step">03 //</span> Generated voice
-            </h2>
-            <WaveformPlayer blob={generatedBlob} title={generatedName} downloadName={generatedName} autoPlay onAudioElement={setAudioElement} />
-          </section>
-        )}
-      </section>
+        <section className="panel" data-active={tab === 'history'} aria-label="Generation history">
+          <div className="page-title">
+            <h2>History</h2>
+            <span className="meta">{history.length} generated</span>
+          </div>
+          <History items={history} onReuse={reuseText} onDelete={removeHistoryItem} onClear={clearAllHistory} />
+        </section>
 
-      <section className="panel" data-active={tab === 'library'} aria-label="Voice library">
-        <div className="page-title">
-          <h2>Library</h2>
-          <span className="meta">{voices.length} saved</span>
-        </div>
-        <Library
-          voices={voices}
-          activeId={savedVoiceId}
-          onUse={(voice) => {
-            useLibraryVoice(voice);
-            setTab('synthesize');
-          }}
-          onDelete={removeVoice}
-        />
-      </section>
+        <section className="panel" data-active={tab === 'settings'} aria-label="Settings">
+          <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
+        </section>
 
-      <section className="panel" data-active={tab === 'history'} aria-label="Generation history">
-        <div className="page-title">
-          <h2>History</h2>
-          <span className="meta">{history.length} generated</span>
-        </div>
-        <History items={history} onReuse={reuseText} onDelete={removeHistoryItem} onClear={clearAllHistory} />
-      </section>
-
-      <section className="panel" data-active={tab === 'settings'} aria-label="Settings">
-        <Settings active={tab === 'settings'} synth={synth} onSynthChange={setSynth} onAvatarsChange={() => setAvatarVersion((v) => v + 1)} />
-      </section>
+      </div>
 
       <nav className="dock" aria-label="Main">
         {(

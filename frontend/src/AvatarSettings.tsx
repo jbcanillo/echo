@@ -79,6 +79,40 @@ export function AvatarSettings({ onChange }: Props) {
         viseme blend shapes, up to {MAX_AVATAR_MB} MB. See the README for how to make and compress one.
       </p>
 
+      <div className="avatar-guide">
+        <a className="btn btn-primary btn-sm" href="https://avaturn.me" target="_blank" rel="noreferrer noopener">
+          Make an avatar at avaturn.me
+        </a>
+        <details>
+          <summary>How to make one with Avaturn (free)</summary>
+          <ol>
+            <li>
+              Open{' '}
+              <a href="https://avaturn.me" target="_blank" rel="noreferrer noopener">
+                avaturn.me
+              </a>{' '}
+              and start a new avatar. It builds a realistic 3D avatar from your photos, and you may need to sign in.
+            </li>
+            <li>Follow its steps: add your photos, then choose the hair, clothes and look.</li>
+            <li>
+              If it asks for the avatar type, choose <b>T2</b>. A T2 avatar has separate eyes and a mouth that can move; a T1 avatar has a fixed face, so its mouth would not follow the
+              voice.
+            </li>
+            <li>
+              Export or download it as a <b>.glb</b> file (glTF 2.0).
+            </li>
+            <li>
+              Come back here and press <b>Upload .glb</b> under Female or Male. The avatar appears in the avatar window straight away.
+            </li>
+            <li>If Echo warns that no lip-sync blend shapes were found, that export has no face animation. Export it again as T2, or try another avatar.</li>
+          </ol>
+          <p className="hint">
+            Avaturn's screens change, so button names may differ. According to TalkingHead's documentation it is free for non-commercial use; check Avaturn's terms before using an avatar for
+            anything else.
+          </p>
+        </details>
+      </div>
+
       {SLOTS.map(({ gender, label }) => {
         const avatar = custom[gender];
         const note = notes[gender];

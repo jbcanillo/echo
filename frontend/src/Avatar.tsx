@@ -360,13 +360,15 @@ function Avatar({ micStream, isThinking, audioElement, gender, customVersion }: 
 
   return (
     <section className={`avatar${failed ? ' avatar-failed' : ''}`} data-state={state} aria-label="Avatar">
-      <div className="avatar-wave" aria-hidden="true">
-        {WAVE_BARS.map((bar, i) => (
-          <span key={i} style={bar} />
-        ))}
-      </div>
-      <div className="avatar-frame">
-        <div ref={containerRef} className="avatar-stage" />
+      <div className="avatar-stagewrap">
+        <div className="avatar-wave" aria-hidden="true">
+          {WAVE_BARS.map((bar, i) => (
+            <span key={i} style={bar} />
+          ))}
+        </div>
+        <div className="avatar-frame">
+          <div ref={containerRef} className="avatar-stage" />
+        </div>
       </div>
       <p className="avatar-status" role="status">{status}</p>
       {customFailed && !failed && (

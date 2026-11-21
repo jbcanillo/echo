@@ -232,7 +232,7 @@ The dev server reads the same root `.env` and proxies `/api` to `http://localhos
 
 ## Avatar
 
-The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. It appears only on the Synthesize page, and is not loaded until you first open that page. A **Female / Male** switch under it picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**: along the top of the screen on a phone or a tablet held upright, and on the **right half of the screen, full height**, on a wide screen or a landscape phone or tablet, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
 
 | State | Trigger | Ring and waveform |
 |-------|---------|-------------------|
@@ -240,7 +240,7 @@ The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. 
 | **Speaking** | While the generated audio plays | Mint |
 | **Idle** | Otherwise | Quiet mint |
 
-It is loaded as a separate chunk after the page is shown. If WebGL is unavailable, the avatar is hidden and the rest of the app works as before.
+It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the top window shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
 
 **Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
 
@@ -315,7 +315,7 @@ The interface follows the "Obsidian Waveform" design system in `DESIGN.md`: dark
 | **Cyan** | `#38BDF8` | AI text tools, thinking |
 | **Red** | `#F87171` | Recording and errors only |
 
-It is built for phones first: a single column, a floating bottom dock (Sample, Synthesize, Library, History), and an equalizer-style player where the bars fill as audio plays and dragging them seeks. Fonts (Geist and JetBrains Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
+It is built for phones first: a single column under the fixed avatar bar, a floating bottom dock (Sample, Synthesize, Library, History), and on wide screens a split page with the content on the left and the avatar on the right, and an equalizer-style player where the bars fill as audio plays and dragging them seeks. Fonts (Geist and JetBrains Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
 
 ---
 
@@ -334,7 +334,7 @@ The sliders icon in the top-right corner opens the Settings page.
 
 Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. These map to the YourTTS (VITS) length, noise and duration-noise scales. Pitch is not offered because the model has no pitch control.
 
-**Avatars** uploads your own female and male 3D avatars (see [Your Own Avatars](#your-own-avatars)).
+**Avatars** uploads your own female and male 3D avatars (see [Your Own Avatars](#your-own-avatars)). It links to [Avaturn](https://avaturn.me) and has a short step-by-step guide for making a free avatar there.
 
 **Notifications** turns on a browser notification for when a voice is ready or fails, with a **Send a test** button. See [Notifications and Installing](#notifications-and-installing).
 
