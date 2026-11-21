@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { API_BASE, DEFAULT_SYNTH, LANGUAGES, SynthSettings, synthIsDefault } from './api';
+import { AvatarSettings } from './AvatarSettings';
+import { InstallCard } from './InstallPrompt';
+import { NotificationsCard } from './NotificationsCard';
 
 interface OpenRouterInfo {
   configured: boolean;
@@ -14,6 +17,8 @@ interface SettingsProps {
   active: boolean;
   synth: SynthSettings;
   onSynthChange: (next: SynthSettings) => void;
+  /** Called when a custom avatar was uploaded or removed */
+  onAvatarsChange: () => void;
 }
 
 const MODEL_SUGGESTIONS = ['openai/gpt-4o-mini', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'meta-llama/llama-3.3-70b-instruct'];
@@ -57,7 +62,7 @@ function Slider({ id, label, hint, min, max, step, value, defaultValue, format, 
   );
 }
 
-export function Settings({ active, synth, onSynthChange }: SettingsProps) {
+export function Settings({ active, synth, onSynthChange, onAvatarsChange }: SettingsProps) {
   const [info, setInfo] = useState<OpenRouterInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
@@ -182,6 +187,12 @@ export function Settings({ active, synth, onSynthChange }: SettingsProps) {
           Reset to defaults
         </button>
       </section>
+
+      <AvatarSettings onChange={onAvatarsChange} />
+
+      <NotificationsCard />
+
+      <InstallCard />
 
       <section className="card" aria-labelledby="h-or">
         <h2 id="h-or">

@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         injectRegister: 'auto',
         workbox: {
+          // Notification click handling (brings the app to the front)
+          importScripts: ['sw-extra.js'],
           // Never answer API requests from the service worker
           navigateFallbackDenylist: [/^\/api/],
           // Include the lip-sync worklet and viseme model so the avatar works offline

@@ -261,6 +261,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// The limits actually in force, so the UI never has to guess (or hard-code) them
+app.get('/api/config', (req, res) => {
+  res.json({ maxTextLength: MAX_TEXT_LENGTH, maxPromptLength: MAX_PROMPT_LENGTH, maxUploadMb: MAX_UPLOAD_MB });
+});
+
 // Shared by the text endpoints: send a system + user message to OpenRouter and return the reply,
 // trimmed to MAX_TEXT_LENGTH. Sends the error response itself and returns null on failure.
 async function askModel(res, system, user) {
@@ -430,4 +435,9 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
+  // A stale value in .env silently overrides the defaults, so show what is really in force
+  console.log(
+    `Limits: text ${MAX_TEXT_LENGTH} chars, prompt ${MAX_PROMPT_LENGTH} chars, upload ${MAX_UPLOAD_MB} MB, ` +
+      `${RATE_LIMIT_PER_MINUTE} requests/min, job timeout ${JOB_TIMEOUT_MS / 1000}s`
+  );
 });

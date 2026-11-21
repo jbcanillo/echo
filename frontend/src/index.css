@@ -1,6 +1,11 @@
 /* Echo: "Obsidian Waveform" design system (see DESIGN.md). Dark glass surfaces, mint/emerald/cyan accents. */
 
 :root {
+  /* Avatar window: --avatar-d is the avatar's diameter, --avatar-h the height the window takes along the top */
+  --avatar-d: 124px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --avatar-h: calc(var(--safe-top) + var(--avatar-d) + 46px);
+
   --canvas: #0b0f12;
   --glass-1: rgba(22, 29, 36, 0.7);
   --glass-2: rgba(30, 41, 51, 0.85);
@@ -70,7 +75,12 @@ h1, h2, h3, p {
 .app {
   max-width: 640px;
   margin: 0 auto;
-  padding: 20px 16px calc(112px + var(--safe-bottom));
+  padding: 0 16px calc(112px + var(--safe-bottom));
+}
+
+/* Leave room for the fixed avatar window (see "Avatar window" below) */
+.app-content {
+  padding-top: calc(var(--avatar-h) + 16px);
 }
 
 .panel {
@@ -84,12 +94,6 @@ h1, h2, h3, p {
   height: 0;
   overflow: hidden;
   visibility: hidden;
-}
-
-@media (min-width: 640px) {
-  .app {
-    padding-top: 32px;
-  }
 }
 
 /* ---------- Header ---------- */
@@ -136,6 +140,13 @@ h1, h2, h3, p {
   padding: 8px 0 0;
 }
 
+.avatar-stagewrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
 .avatar[data-state='listening'] { --accent: var(--error); }
 .avatar[data-state='thinking'] { --accent: var(--tertiary); }
 .avatar[data-state='speaking'] { --accent: var(--primary); }
@@ -143,10 +154,11 @@ h1, h2, h3, p {
 /* Rhythmic waveform bars stretching out from the avatar */
 .avatar-wave {
   position: absolute;
-  top: 8px;
+  top: 50%;
   left: 0;
   right: 0;
-  height: 232px;
+  height: var(--avatar-d);
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -185,8 +197,8 @@ h1, h2, h3, p {
 
 .avatar-frame {
   position: relative;
-  width: 232px;
-  height: 232px;
+  width: var(--avatar-d);
+  height: var(--avatar-d);
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -226,8 +238,8 @@ h1, h2, h3, p {
 
 .avatar-stage {
   position: relative;
-  width: 214px;
-  height: 214px;
+  width: calc(var(--avatar-d) - 18px);
+  height: calc(var(--avatar-d) - 18px);
   border-radius: 50%;
   overflow: hidden;
   background: radial-gradient(circle at 50% 35%, #153a2c 0%, #0c241c 55%, #08130f 100%);
@@ -328,6 +340,10 @@ h1, h2, h3, p {
   line-height: 14px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.counter.is-over {
+  color: var(--error);
 }
 
 .hint {
@@ -832,6 +848,11 @@ input[type='checkbox']:disabled {
 .status-message.success {
   color: #bbf7d9;
   border-color: rgba(16, 244, 156, 0.4);
+}
+
+.status-message.warn {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.5);
 }
 
 .dismiss-button {
@@ -1577,4 +1598,245 @@ input[type='range']:focus-visible {
 
 .docs-link {
   align-self: flex-start;
+}
+
+/* ---------- Install banner ---------- */
+
+.install-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: var(--glass-1);
+  border: 1px solid rgba(16, 244, 156, 0.25);
+  border-radius: var(--r-card);
+  box-shadow: var(--glow);
+}
+
+.install-icon {
+  flex: none;
+  border-radius: 10px;
+}
+
+.install-text {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.install-text strong {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.install-text span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.install-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.notify-ask {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* ---------- Avatar upload slots (Settings) ---------- */
+
+.avatar-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+}
+
+.avatar-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---------- Avatar guide (Settings) ---------- */
+
+.avatar-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.avatar-guide summary {
+  color: var(--tertiary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.avatar-guide ol {
+  margin: 10px 0;
+  padding-left: 20px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.avatar-guide li + li {
+  margin-top: 6px;
+}
+
+/* ---------- Avatar window ---------- */
+
+/* Phones (portrait): fixed along the top of every page. The content scrolls underneath it. */
+.avatar-window {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: var(--avatar-h);
+  padding-top: var(--safe-top);
+  /* Solid, then fading out, so scrolled content slides away behind it */
+  background: linear-gradient(var(--canvas) 82%, transparent);
+  pointer-events: none;
+}
+
+.avatar-window .avatar {
+  flex: 1;
+  justify-content: flex-start;
+  padding: 14px 0 0;
+}
+
+.avatar-window .avatar-status {
+  margin-top: 8px;
+}
+
+.avatar-window .avatar-toggle {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 12px;
+  width: 112px;
+  pointer-events: auto;
+}
+
+.avatar-window .avatar-toggle button {
+  min-height: 28px;
+  font-size: 11px;
+}
+
+/* Notes (for example "custom avatar could not be loaded") sit under the status line; the bar grows to fit them */
+.avatar-window .avatar-note {
+  max-width: 340px;
+  margin: 6px 16px 0;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.app:has(.avatar-note) {
+  --avatar-h: calc(var(--safe-top) + var(--avatar-d) + 46px + 52px);
+}
+
+/* Short screens, or a phone with its keyboard open: a smaller avatar */
+@media (max-height: 640px) {
+  :root {
+    --avatar-d: 92px;
+  }
+}
+
+/* Wide screens and landscape phones and tablets: fixed on the right, half the screen */
+@media (min-width: 900px), (min-width: 640px) and (orientation: landscape) {
+  :root {
+    --avatar-d: min(46vh, 32vw, 440px);
+  }
+
+  .app {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .app-content {
+    width: 50vw;
+    padding: 32px 24px calc(112px + var(--safe-bottom));
+  }
+
+  .app-content > * {
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .avatar-window {
+    left: auto;
+    bottom: 0;
+    justify-content: center;
+    gap: 20px;
+    width: 50vw;
+    height: auto;
+    padding: 24px;
+    background: radial-gradient(ellipse 80% 60% at 50% 42%, rgba(16, 244, 156, 0.07), transparent 70%), var(--canvas);
+    border-left: 1px solid var(--line);
+    pointer-events: auto;
+  }
+
+  .avatar-window .avatar {
+    flex: none;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .avatar-window .avatar-status {
+    margin-top: 24px;
+  }
+
+  .avatar-window .avatar-toggle {
+    position: static;
+    width: 220px;
+  }
+
+  .avatar-window .avatar-toggle button {
+    min-height: 36px;
+    font-size: 13px;
+  }
+
+  .avatar-window .avatar-note {
+    max-width: 320px;
+    margin: 12px 0 0;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* The bottom navigation stays centred under the content, not the whole screen */
+  .dock {
+    left: 25vw;
+  }
+}
+
+/* No WebGL: the window would only show an error line, so give the space back to the page */
+.app:has(.avatar-failed) {
+  --avatar-h: calc(var(--safe-top) + 56px);
+}
+
+.app:has(.avatar-failed) .avatar-window {
+  background: none;
+}
+
+/* Nothing to switch or animate without an avatar: just the status line remains */
+.avatar-failed .avatar-wave,
+.avatar-window:has(.avatar-failed) .avatar-toggle {
+  display: none;
 }

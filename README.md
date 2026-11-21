@@ -232,7 +232,7 @@ The dev server reads the same root `.env` and proxies `/api` to `http://localhos
 
 ## Avatar
 
-The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. It appears only on the Synthesize page, and is not loaded until you first open that page. A **Female / Male** switch under it picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
+The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. Its window is **fixed on every page**: along the top of the screen on a phone or a tablet held upright, and on the **right half of the screen, full height**, on a wide screen or a landscape phone or tablet, with the content scrolling on the left. A **Female / Male** switch in the window picks the model and body type; the choice is remembered in the browser. The generated audio is analysed as it plays, so the lips follow whatever the player plays, including pause and seek, and the backend does nothing extra.
 
 | State | Trigger | Ring and waveform |
 |-------|---------|-------------------|
@@ -240,15 +240,46 @@ The avatar lives in `frontend/src/Avatar.tsx` and runs entirely in the browser. 
 | **Speaking** | While the generated audio plays | Mint |
 | **Idle** | Otherwise | Quiet mint |
 
-It is loaded as a separate chunk after the page is shown. If WebGL is unavailable, the avatar is hidden and the rest of the app works as before.
+It is loaded as a separate chunk after the page is shown. On a short screen, or a phone with its keyboard open, the top window shrinks. If WebGL is unavailable, the window collapses to a single status line and the rest of the app works as before.
 
 **Lip-sync quality depends on a secure connection.** Precise, viseme-based lip-sync uses an AudioWorklet, which browsers only allow on HTTPS or `localhost`. On a plain `http://` address (for example a LAN IP) Echo still shows the avatar but falls back to a simpler mouth movement that follows the loudness of the speech. Serve Echo over HTTPS for the full effect.
 
+### Your Own Avatars
+
+Open **Settings → Avatars** to replace the built-in female or male avatar with your own `.glb` model. The files are stored in this browser (IndexedDB) and are never uploaded; **Use default** removes one. The avatar on the Synthesize page reloads as soon as you save.
+
+Echo checks a file before accepting it, because TalkingHead needs a specific structure. A file is rejected, with a message saying why, if it:
+
+- is not a binary glTF 2.0 (`.glb`) file, or is larger than 60 MB
+- lacks the Mixamo-compatible skeleton (`Hips`, `Spine`, arms, hands, fingers, legs and toes; a `mixamorig` prefix is fine)
+- has no blend shapes (morph targets)
+
+A model without lip-sync shapes (`viseme_aa` or `jawOpen`) is accepted with a warning: it loads, but its mouth will not move. If a saved file passes these checks but still fails to load (for example because it is truncated), Echo shows the built-in avatar and says so. To make a compatible model, follow the steps under [Replacing the Models](#replacing-the-models).
+
+### Where to Get Avatars
+
+| Source | Cost | Notes |
+|--------|------|-------|
+| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible. A sample Avaturn export passes Echo's upload checks and loads and animates in the app |
+| [MPFB](https://static.makehumancommunity.org/mpfb.html) for Blender | Free, CC0 output | The most flexible, and how the bundled avatars started. Needs Blender; follow [TalkingHead's MPFB guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/MPFB/MPFB.md) |
+| [VRoid Studio](https://vroid.com/en/studio) | Free, permissive terms | Anime style. Its files must first be converted to TalkingHead's format in Blender, using [this guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/VRoid/VROID.md) |
+| [Avatar SDK (MetaPerson)](https://avatarsdk.com) | Commercial service | Realistic avatars from photos. Needs TalkingHead's conversion scripts |
+| Ready Player Me | — | **Shut down on 31 January 2026**: its avatar creator is offline, so do not rely on it |
+
+Whatever you use, check its terms of use: many avatar services forbid avatars that a public web app delivers to the browser.
+
 ### Replacing the Models
 
-The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. **No male model ships with Echo**: until you add `male.glb`, choosing Male shows the default model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
+These steps are for changing the **built-in** avatars in the source code, or for preparing a model to upload in Settings. The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. If `male.glb` is missing, choosing Male shows the female model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
 
-The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB. To use your own:
+Both bundled avatars are generic placeholders, meant to be replaced:
+
+- `generic.glb` (female) is the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB.
+- `male.glb` is that same model reshaped into a male body with MakeHuman's own CC0 gender targets: broader shoulders and a stronger jaw, heavier brows, a warmer skin tone, and every bone moved to match with its rotations untouched, so the rig, the lip-sync shapes and all poses behave exactly like the female one. It is 4.5 MB, and CC0 like its source.
+
+The male model is a rough first version. The hair keeps a small tuft at the back where the original ponytail was cut away, the shirt still has a faint female chest line, and the face is the female face reshaped rather than a new design. Replace it in Settings, or by swapping the file, when you have something better.
+
+To use your own:
 
 1. Create a GLB with a Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes (see [TalkingHead, Appendix A](https://github.com/met4citizen/TalkingHead#appendix-a-create-your-own-3d-avatar)).
 2. Compress it (textures to WebP, geometry with Meshopt; avoid `optimize` / `simplify`, which can break blend shapes):
@@ -284,7 +315,7 @@ The interface follows the "Obsidian Waveform" design system in `DESIGN.md`: dark
 | **Cyan** | `#38BDF8` | AI text tools, thinking |
 | **Red** | `#F87171` | Recording and errors only |
 
-It is built for phones first: a single column, a floating bottom dock (Sample, Synthesize, Library, History), and an equalizer-style player where the bars fill as audio plays and dragging them seeks. Fonts (Geist and JetBrains Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
+It is built for phones first: a single column under the fixed avatar bar, a floating bottom dock (Sample, Synthesize, Library, History), and on wide screens a split page with the content on the left and the avatar on the right, and an equalizer-style player where the bars fill as audio plays and dragging them seeks. Fonts (Geist and JetBrains Mono) are bundled with `@fontsource`, so the installed app works offline and nothing is loaded from a third-party CDN. Animations switch off for users who prefer reduced motion.
 
 ---
 
@@ -303,6 +334,12 @@ The sliders icon in the top-right corner opens the Settings page.
 
 Only sliders you moved are sent to the server; untouched ones leave the model's own defaults in place. These map to the YourTTS (VITS) length, noise and duration-noise scales. Pitch is not offered because the model has no pitch control.
 
+**Avatars** uploads your own female and male 3D avatars (see [Your Own Avatars](#your-own-avatars)). It links to [Avaturn](https://avaturn.me) and has a short step-by-step guide for making a free avatar there.
+
+**Notifications** turns on a browser notification for when a voice is ready or fails, with a **Send a test** button. See [Notifications and Installing](#notifications-and-installing).
+
+**Install app** installs Echo on your device when the browser allows it.
+
 **OpenRouter** lets you paste an API key and choose a model, with a **Test key** button. The key is saved on the server in `echo-settings.json` next to the voice models, so it survives rebuilds, and it is **never sent back to the browser** (only the last four characters are shown). A key saved here overrides `OPENROUTER_API_KEY` in `.env`. Because Echo has no accounts, anyone who can open the app can replace the key: keep Echo on a private network.
 
 **Developers** links to the [Swagger docs](#interactive-docs-swagger).
@@ -311,10 +348,19 @@ Only sliders you moved are sent to the server; untouched ones leave the model's 
 
 ## PWA Features
 
-- Installable on mobile and desktop, with icons generated from the logo
+- Installable on mobile and desktop, with icons generated from the logo, and an **Install now** prompt while it is not installed
+- Notifications when a voice is ready or fails (see below)
 - Offline caching of the app shell, fonts, lip-sync worklet and avatar model (the avatar model is cached on first use); generating a voice still needs the backend
 - Automatic updates through the service worker
 - API requests are never served from the service-worker cache
+
+### Notifications and Installing
+
+**Install prompt.** While Echo is not installed, a banner offers **Install now** (and **Not now**, which hides it for two weeks). It uses the browser's own install dialog, so it appears only where the browser supports installing: Chrome, Edge and other Chromium browsers. On iPhone and iPad there is no install dialog, so the banner explains **Share → Add to Home Screen** instead. The same option is always available under **Settings → Install app**. Installing requires HTTPS (or `localhost`).
+
+**Notifications.** Turn them on under **Settings → Notifications**, or with **Notify me when it is done** while a voice is generating. Echo then sends a notification when a voice is ready, or fails, **only while it is in the background** (another tab or window), never while you are looking at it. Clicking the notification brings Echo to the front. The same applies to the AI text tools, **Write text** and **Polish wording**. Notifications need HTTPS (or `localhost`); on iPhone and iPad they work once Echo is added to the home screen (iOS 16.4 or later).
+
+> **Limits.** These are local notifications: the page shows them itself, and nothing goes through a push server. They work while the browser keeps Echo running in the background. If you close the browser, or your phone puts it to sleep, the request is interrupted and no notification is sent. Notifying with the app closed would need real Web Push, which requires the server to keep generation jobs running on its own and to hold push subscriptions; Echo does not do that today.
 
 ---
 
@@ -328,6 +374,15 @@ All endpoints are public: Echo has no accounts or API keys, so keep it on a priv
 curl http://localhost:8000/api/health
 # → { "status": "ok" }
 ```
+
+### Configuration
+
+```bash
+curl http://localhost:8000/api/config
+# → { "maxTextLength": 5000, "maxPromptLength": 1000, "maxUploadMb": 20 }
+```
+
+The limits the server is actually enforcing. The web app reads them from here instead of assuming its own. The server also prints them when it starts (`Limits: text 5000 chars, …`), which is the quickest way to see what `.env` really set.
 
 ### Interactive Docs (Swagger)
 
@@ -441,7 +496,7 @@ Only variables starting with `VITE_` are exposed to the browser, so secrets such
 | `VITE_BACKEND_URL` | *(empty)* | Empty sends `/api` through the dev server or nginx proxy. Set to call the backend directly |
 | `VITE_PROXY_TARGET` | `http://localhost:$PORT` | Where the Vite dev server proxies `/api` |
 
-> **Keep these in sync.** The text counter in the UI is fixed at 5000 characters (`MAX_TEXT_LENGTH` in `frontend/src/App.tsx`), and the bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_TEXT_LENGTH` or `MAX_UPLOAD_MB` on the backend, change them there too.
+> **Upload size.** The bundled nginx accepts uploads up to 25 MB (`client_max_body_size` in `frontend/nginx.conf`). If you raise `MAX_UPLOAD_MB` above that, raise it there too. The text and prompt limits need no matching change: the web app reads them from the server (`/api/config`).
 
 ---
 
@@ -490,6 +545,10 @@ docker compose logs -f backend
 ```
 
 On a slow connection, raise `JOB_TIMEOUT_SECONDS`. If you raise it above 600, also raise `proxy_read_timeout` and `proxy_send_timeout` in `frontend/nginx.conf`.
+
+**"Text must be at most 1000 characters" although the code allows more**
+
+A value in your `.env` overrides the built-in default. If you created `.env` from an older `.env.example`, it may still contain `MAX_TEXT_LENGTH=1000`. Set it to `5000` (or delete the line), then restart the backend. The first lines the server prints when it starts show the limits it is really using (`Limits: text 1000 chars, …`), and the counter under the script box follows them.
 
 **`Voice cloning failed` with `KeyError: 'yourtts'`**
 
@@ -646,7 +705,7 @@ Third-party components keep their own licenses:
 | three.js, React, vite-plugin-pwa | MIT |
 | `coqui-tts` | MPL-2.0 |
 | **YourTTS voice model** | **CC BY-NC-ND 4.0 — non-commercial use only** |
-| Placeholder avatar `generic.glb` (MPFB sample) | CC0 |
+| Placeholder avatars `generic.glb` (MPFB sample) and `male.glb` (the same model reshaped with MakeHuman's gender targets) | CC0 |
 | Geist, JetBrains Mono fonts | OFL-1.1 |
 
 > **Commercial use:** because of the YourTTS model license, using Echo's output commercially requires replacing the model with one whose license allows it.
