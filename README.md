@@ -256,11 +256,30 @@ Echo checks a file before accepting it, because TalkingHead needs a specific str
 
 A model without lip-sync shapes (`viseme_aa` or `jawOpen`) is accepted with a warning: it loads, but its mouth will not move. If a saved file passes these checks but still fails to load (for example because it is truncated), Echo shows the built-in avatar and says so. To make a compatible model, follow the steps under [Replacing the Models](#replacing-the-models).
 
+### Where to Get Avatars
+
+| Source | Cost | Notes |
+|--------|------|-------|
+| [Avaturn](https://avaturn.me) | Free for non-commercial use, according to TalkingHead's documentation (check Avaturn's current terms) | Makes a realistic avatar from a photo. Choose a **Type-2 (T2)** avatar, the one TalkingHead documents as compatible. A sample Avaturn export passes Echo's upload checks and loads and animates in the app |
+| [MPFB](https://static.makehumancommunity.org/mpfb.html) for Blender | Free, CC0 output | The most flexible, and how the bundled avatars started. Needs Blender; follow [TalkingHead's MPFB guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/MPFB/MPFB.md) |
+| [VRoid Studio](https://vroid.com/en/studio) | Free, permissive terms | Anime style. Its files must first be converted to TalkingHead's format in Blender, using [this guide](https://github.com/met4citizen/TalkingHead/blob/main/blender/VRoid/VROID.md) |
+| [Avatar SDK (MetaPerson)](https://avatarsdk.com) | Commercial service | Realistic avatars from photos. Needs TalkingHead's conversion scripts |
+| Ready Player Me | — | **Shut down on 31 January 2026**: its avatar creator is offline, so do not rely on it |
+
+Whatever you use, check its terms of use: many avatar services forbid avatars that a public web app delivers to the browser.
+
 ### Replacing the Models
 
-These steps are for changing the **built-in** avatars in the source code, or for preparing a model to upload in Settings. The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. **No male model ships with Echo**: until you add `male.glb`, choosing Male shows the default model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
+These steps are for changing the **built-in** avatars in the source code, or for preparing a model to upload in Settings. The female avatar is `frontend/public/avatars/generic.glb` and the male one is `frontend/public/avatars/male.glb`. If `male.glb` is missing, choosing Male shows the female model with the male body type (and a note says so). Any model that meets the requirements below works, and you can point `MODEL_URLS` at the top of `Avatar.tsx` to other files.
 
-The bundled `frontend/public/avatars/generic.glb` is a placeholder: the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB. To use your own:
+Both bundled avatars are generic placeholders, meant to be replaced:
+
+- `generic.glb` (female) is the CC0 "MPFB" sample avatar from the TalkingHead project, compressed from 37 MB to 4.6 MB.
+- `male.glb` is that same model reshaped into a male body with MakeHuman's own CC0 gender targets: broader shoulders and a stronger jaw, heavier brows, a warmer skin tone, and every bone moved to match with its rotations untouched, so the rig, the lip-sync shapes and all poses behave exactly like the female one. It is 4.5 MB, and CC0 like its source.
+
+The male model is a rough first version. The hair keeps a small tuft at the back where the original ponytail was cut away, the shirt still has a faint female chest line, and the face is the female face reshaped rather than a new design. Replace it in Settings, or by swapping the file, when you have something better.
+
+To use your own:
 
 1. Create a GLB with a Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes (see [TalkingHead, Appendix A](https://github.com/met4citizen/TalkingHead#appendix-a-create-your-own-3d-avatar)).
 2. Compress it (textures to WebP, geometry with Meshopt; avoid `optimize` / `simplify`, which can break blend shapes):
@@ -686,7 +705,7 @@ Third-party components keep their own licenses:
 | three.js, React, vite-plugin-pwa | MIT |
 | `coqui-tts` | MPL-2.0 |
 | **YourTTS voice model** | **CC BY-NC-ND 4.0 — non-commercial use only** |
-| Placeholder avatar `generic.glb` (MPFB sample) | CC0 |
+| Placeholder avatars `generic.glb` (MPFB sample) and `male.glb` (the same model reshaped with MakeHuman's gender targets) | CC0 |
 | Geist, JetBrains Mono fonts | OFL-1.1 |
 
 > **Commercial use:** because of the YourTTS model license, using Echo's output commercially requires replacing the model with one whose license allows it.
