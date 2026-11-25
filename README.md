@@ -2,59 +2,162 @@
 
 ![Echo Banner](banner.png)
 
-A self-hosted, mobile-first web app (PWA) that clones a voice from a short sample and speaks any text in it. A 3D avatar thinks while the voice is generated and lip-syncs to the result.
+A self-hosted, containerized, mobile-first Progressive Web App that clones a voice from a short sample and speaks any text in it. Switchable voice models, an animated 3D avatar that lip-syncs to the result, and a REST API. Everything runs on your own hardware (CPU only): voice samples and generated audio are never sent to a third party.
 
-Everything runs on your own hardware, on CPU only. Voice samples and generated audio never leave your machine. The only optional outside call is AI text writing via OpenRouter, which sends text only.
+---
 
-## Contents
+## Table of Contents
 
+- [Architecture](#architecture)
+- [Component Stack](#component-stack)
+- [Consent & Safety](#consent--safety)
 - [Quick Start](#quick-start)
-- [Using Echo](#using-echo)
 - [Voice Models](#voice-models)
 - [Avatar](#avatar)
 - [Settings](#settings)
-- [Configuration](#configuration)
-- [API](#api)
-- [Local Development](#local-development)
+- [AI Text Writing (OpenRouter)](#ai-text-writing-openrouter)
+- [REST API Reference](#rest-api-reference)
+- [Configuration Reference](#configuration-reference)
+- [Limits and Rate Limiting](#limits-and-rate-limiting)
+- [Local Development](#local-development-without-docker)
 - [Troubleshooting](#troubleshooting)
+- [Docker Container Reference](#docker-container-reference)
 - [License](#license)
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph clientLayer["Client Layer"]
+        pwa["React PWA :5173<br/>(nginx :80 in Docker)<br/>Recorder · Player · Library · History · Settings"]
+        avatar["TalkingHead + HeadAudio<br/>(runs in the browser)<br/>3D avatar · audio-driven lip-sync"]
+    end
+
+    subgraph appLayer["Application Layer"]
+        api["API Server :8000<br/>(Node.js + Express)<br/>Uploads · Consent · Rate Limiting · Job Queue<br/>Swagger docs at /api/docs"]
+    end
+
+    subgraph engineLayer["Voice Engine"]
+        worker["Python Worker<br/>(voice_clone.py)<br/>Long-running · JSON lines over stdio"]
+        ffmpeg["pydub + ffmpeg<br/>Sample conversion"]
+        tts["Coqui TTS · YourTTS or XTTS-v2<br/>CPU · cached in a volume"]
+    end
+
+    subgraph externalLayer["External (optional)"]
+        openrouter["OpenRouter API<br/>Text writing and polishing"]
+    end
+
+    pwa <-->|"/api · nginx proxies /api"| api
+    pwa --- avatar
+    api <-->|"job in · WAV path out"| worker
+    worker --> ffmpeg
+    worker --> tts
+    api -.->|"text only, never audio"| openrouter
+
+    classDef client stroke:#18a35c,fill:#ecfdf3
+    classDef app stroke:#b9832b,fill:#fefce8
+    classDef engine stroke:#2c5b36,fill:#f0fdf4
+    classDef external stroke:#d9663a,fill:#fff1ec
+
+    class pwa,avatar client
+    class api app
+    class worker,ffmpeg,tts engine
+    class openrouter external
+```
+
+### Component Stack
+
+| Component | Technology | Role |
+|-----------|------------|------|
+| **Voice cloning** | [Coqui TTS](https://github.com/idiap/coqui-ai-TTS) (`coqui-tts` fork) with YourTTS or XTTS-v2 | Zero-shot voice cloning on CPU, no API cost. [Switchable in Settings](#voice-models) |
+| **Audio preprocessing** | pydub + ffmpeg | Decodes any browser or uploaded format to mono 16-bit 22.05 kHz WAV |
+| **AI text** | [OpenRouter](#ai-text-writing-openrouter) | Optional: write a script from an idea, or polish wording |
+| **API Server** | Node.js 20 + Express | REST API, uploads, consent, rate limiting, job queue, Swagger docs |
+| **Frontend** | React 18 + TypeScript + Vite + `vite-plugin-pwa` | Installable, offline-capable app with notifications |
+| **Avatar** | [TalkingHead](https://github.com/met4citizen/TalkingHead) + [HeadAudio](https://github.com/met4citizen/HeadAudio) (three.js) | 3D avatar with audio-driven lip-sync, in the browser |
+| **Web server** | nginx | Serves the PWA and proxies `/api` to the backend |
+
+**How a request flows:** the browser sends a voice sample and text to `POST /api/clone-voice`; the API validates the upload and consent and queues a job; the Python worker converts the sample and synthesizes the speech; the API streams the WAV back and deletes every temporary file; the browser keeps a copy in History and the avatar lip-syncs to it.
+
+---
+
+## Consent & Safety
+
+Echo can imitate a person's voice, so these safeguards are on by default:
+
+- **Consent is required.** The Generate button stays disabled until the speaker's-permission box is ticked, and the server rejects any request without `consent=true`.
+- **Upload validation.** One audio file only, up to `MAX_UPLOAD_MB`.
+- **Rate limiting and bounded jobs.** `RATE_LIMIT_PER_MINUTE` requests per minute; one synthesis at a time with a `JOB_TIMEOUT_SECONDS` timeout.
+- **Nothing is stored on the server.** The sample and generated audio are deleted after every request. Library and History live only in your browser.
+- **Audio stays local.** Only text goes to OpenRouter, and only when you use the AI text tools.
+
+> **Responsible use:** only clone a voice you own or have permission to use. The consent box is a self-declaration, not verification, and Echo does not watermark its output.
 
 ---
 
 ## Quick Start
 
-You need Docker with Compose v2, a few GB of free disk, and internet on first run (to build the image and download the voice model).
+### Prerequisites
+
+- Docker Engine 24+ and Docker Compose v2.24+
+- A few GB of free disk space and internet on first run (to build the image and download the voice model)
+- *Optional:* an [OpenRouter](https://openrouter.ai) API key for AI text writing
+
+### 1 — Configure (Optional)
 
 ```bash
-cp .env.example .env        # optional: Echo runs without it
-docker compose up --build -d
+cp .env.example .env
 ```
 
-Open **http://localhost:5173**.
+There is one `.env` file, at the repository root, and every setting in it is optional. For example, to enable AI text writing:
 
-The first generation downloads the YourTTS model (~425 MB), so it is slow once. The model is cached in the `tts-models` volume, so later requests take about a second.
+```env
+# Free at https://openrouter.ai → Keys → Create Key
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxx
+```
 
-- Rebuild after code changes with `docker compose up --build -d`. The model cache is kept.
-- `docker compose down` is safe. **Do not add `-v`**: that deletes the cached model.
-- Watch progress with `docker compose logs -f backend`.
+### 2 — Start the Stack
 
-There is one `.env` file, at the repository root. Every setting in it is optional.
+```bash
+docker compose up --build -d
 
-## Using Echo
+# Follow the backend logs
+docker compose logs -f backend
+```
 
-1. **Sample.** Record 20–30 seconds of the speaker reading the on-screen text, upload an audio file (WAV, MP3, M4A, OGG, WebM, FLAC), or pick a saved voice from the **Library**. Optionally save it under a name.
-2. **Script.** Type or paste the text. With an [OpenRouter](#openrouter-optional) key you can also describe what you want and press **Write text**, or press **Polish wording** to rewrite what you typed (**Undo** restores it).
-3. **Consent.** Tick the box confirming the speaker agreed, then press **Synthesize audio**.
+The first voice request downloads the YourTTS model (~425 MB), so it takes longer. The model is cached in the `tts-models` volume, so later requests take about a second.
 
-The result plays in the app, can be downloaded as WAV, and is saved in **History**, where you can replay it or reuse its text. Library and History live only in your browser.
+### 2a — Rebuilding After Code Changes
+
+The voice model lives in the named volume `tts-models`, so rebuilding does not re-download it.
+
+```bash
+docker compose up --build --force-recreate backend frontend
+```
+
+`docker compose down` is also safe. **Do not add `-v`**: that deletes the model cache.
+
+### 3 — Open the App
+
+**http://localhost:5173**
+
+### 4 — Clone a Voice
+
+1. **Sample.** Record 20–30 seconds of the speaker reading the on-screen text, upload a WAV, MP3, M4A, OGG, WebM or FLAC file, or pick a saved voice from the **Library**. Optionally save it under a name.
+2. **Script.** Type or paste the text. With an OpenRouter key you can also press **Write text** (from an idea) or **Polish wording** (rewrite what you typed; **Undo** restores it).
+3. **Consent.** Tick the box and press **Synthesize audio**.
+
+The result plays in the app, can be downloaded as WAV, and is saved in **History** (replay, reuse the text, or delete). The 50 most recent are kept.
 
 > **Recording needs HTTPS or `localhost`.** Browsers block the microphone on plain `http://` addresses such as a LAN IP. Echo then switches you to **Upload**.
 
-> **Responsible use.** Only clone a voice you own or have permission to use. The consent box is a self-declaration, not verification, and Echo does not watermark its output.
+---
 
 ## Voice Models
 
-Pick the model in **Settings → Voice model**. It applies from the next generation, with no restart.
+Pick the model in **Settings → Voice model**. It applies from the next generation, with no restart, and the language list and sliders follow it.
 
 | | YourTTS (default) | XTTS-v2 |
 |---|---|---|
@@ -66,19 +169,21 @@ Pick the model in **Settings → Voice model**. It applies from the next generat
 
 **Both licenses are non-commercial.** Neither model supports Filipino/Tagalog.
 
-To use XTTS-v2, choose it in Settings, read the [Coqui license](https://coqui.ai/cpml), tick the box to accept it, and press **Use this model**. Echo never accepts the license for you. For Japanese, Korean or Chinese, also install the extra packages: `pip install 'coqui-tts[ja,ko,zh]'`, or with Docker set `XTTS_LANGUAGES=true` in `.env` and rebuild.
+To use XTTS-v2: choose it in Settings, read the [Coqui license](https://coqui.ai/cpml), tick the box to accept it, and press **Use this model**. Echo never accepts the license for you. For Japanese, Korean or Chinese, also install the extra packages: `pip install 'coqui-tts[ja,ko,zh]'`, or with Docker set `XTTS_LANGUAGES=true` in `.env` and rebuild.
 
 > XTTS-v2 support was tested with a stand-in model, because its weights could not be downloaded in the development environment. Expect to be the first to run it on real hardware.
 
+---
+
 ## Avatar
 
-The avatar window is always visible: at the top of the screen on phones, and on the right half on wide screens. Choose **Female** or **Male** under it. It lip-syncs to any audio played in Echo (new results, History, Library, sample preview). If WebGL is unavailable, it collapses to a status line and the rest of the app works.
+The avatar window is always visible: at the top of the screen on phones (just below the title bar), and on the right half of wide screens. Choose **Female** or **Male** under it. It lip-syncs to any audio played in Echo: new results, History, Library and the sample preview. If WebGL is unavailable it collapses to a status line and the rest of the app works.
 
 Precise lip-sync needs HTTPS or `localhost`; on plain `http://` it falls back to a simpler loudness-based mouth.
 
 ### Use your own avatar
 
-Open **Settings → Avatars** and upload a `.glb` for Female or Male. Files stay in your browser. Echo checks that the file has a Mixamo-compatible skeleton and face blend shapes, and tells you if not.
+Open **Settings → Avatars** and upload a `.glb` for Female or Male. Files stay in your browser. Echo checks for a Mixamo-compatible skeleton and face blend shapes, and says why if a file is rejected.
 
 The easiest free source is [Avaturn](https://avaturn.me) (check its terms of use):
 
@@ -88,28 +193,59 @@ The easiest free source is [Avaturn](https://avaturn.me) (check its terms of use
 
 Other sources: [MPFB](https://static.makehumancommunity.org/mpfb.html) for Blender (CC0, most flexible) and [VRoid Studio](https://vroid.com/en/studio) (needs conversion). Ready Player Me shut down in January 2026.
 
-The built-in avatars are placeholders: `frontend/public/avatars/generic.glb` (female) and `male.glb`, both CC0. To change them in the source, replace those files.
+The built-in avatars are CC0 placeholders: `frontend/public/avatars/generic.glb` (female) and `male.glb`. Replace those files to change them in the source.
+
+---
 
 ## Settings
 
-The sliders icon (top right) opens Settings.
+The sliders icon (top right) opens Settings:
 
-- **Voice model:** choose YourTTS or XTTS-v2 (see [Voice Models](#voice-models)).
-- **Synthesizer:** speed, expressiveness, rhythm variation and the text language. Saved in your browser; double-click a slider to reset it. Sliders you do not move leave the model's own defaults.
+- **Voice model:** YourTTS or XTTS-v2 (see [Voice Models](#voice-models)).
+- **Synthesizer:** speed, expressiveness, rhythm variation and text language. Saved in your browser; double-click a slider to reset it.
 - **Avatars:** upload your own, with an Avaturn guide.
-- **Notifications:** get a browser notification when a voice is ready or fails, while Echo is in the background.
+- **Notifications:** a browser notification when a voice is ready or fails, while Echo is in the background.
 - **Install app:** install Echo on your device (Chrome, Edge; on iPhone use Share → Add to Home Screen).
 - **OpenRouter:** paste an API key and choose a model, with a **Test key** button.
 
-The OpenRouter key is saved on the server and is never sent back to the browser. Echo has no accounts, so anyone who can open it can change the key and the voice model: keep it on a private network or behind your own authentication.
+The OpenRouter key is saved on the server and never sent back to the browser. Echo has no accounts, so anyone who can open it can change the key and the voice model: keep it on a private network or behind your own authentication.
 
-### OpenRouter (optional)
+---
 
-[OpenRouter](https://openrouter.ai) powers **Write text** and **Polish wording**. Get a key at [openrouter.ai/keys](https://openrouter.ai/keys) and paste it in Settings (or set `OPENROUTER_API_KEY` in `.env`). Only text is sent, never audio. Without a key everything else works.
+## AI Text Writing (OpenRouter)
 
-## Configuration
+[OpenRouter](https://openrouter.ai) powers **Write text** and **Polish wording**. Get a key at [openrouter.ai/keys](https://openrouter.ai/keys) and paste it in Settings, or set `OPENROUTER_API_KEY` in `.env`. Any OpenRouter model ID works (default `openai/gpt-4o-mini`). Only text is sent, never audio. Without a key everything else works.
 
-Set these in the root `.env` (copy `.env.example`). Values already in your shell take precedence.
+---
+
+## REST API Reference
+
+All endpoints are public. Interactive docs are at **http://localhost:8000/api/docs** (also `/api/docs` on port 5173).
+
+```bash
+# Clone a voice and save the result
+curl -X POST http://localhost:8000/api/clone-voice \
+  -F "voiceSample=@sample.wav" \
+  -F "text=Hello from Echo" \
+  -F "consent=true" \
+  -o cloned_voice.wav
+```
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/clone-voice` | Required: `voiceSample`, `text`, `consent=true`. Optional: `language`, `speed` (0.5–2), `expressiveness` (0.1–1), `variation` (0–1.5, ignored by XTTS-v2). Returns a WAV |
+| `POST /api/generate-text`, `/api/enhance-text` | AI text tools (need an OpenRouter key). Return `{ "text": "..." }` |
+| `GET /api/config` | Limits, and the active voice model's languages and sliders |
+| `GET`/`PUT /api/settings` | OpenRouter key and model; voice model (`ttsModel`, plus `acceptLicense` for XTTS-v2) |
+| `GET /api/health` | Health check |
+
+Errors return `{ "error": "..." }`. Status `429` means the rate limit was exceeded.
+
+---
+
+## Configuration Reference
+
+Set these in the root `.env` (copy `.env.example`). Values already set in your shell take precedence.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -125,36 +261,26 @@ Set these in the root `.env` (copy `.env.example`). Values already in your shell
 | `CORS_ORIGIN` | all | Comma-separated allowed origins. **Set this in production** |
 | `PORT` / `HOST` | `8000` / `0.0.0.0` | API server address |
 
-Less common: `TRUST_PROXY_HOPS`, `PYTHON_BIN`, `SETTINGS_FILE`, `TTS_HOME`, `VITE_BACKEND_URL`, `VITE_PROXY_TARGET` (see `.env.example`).
+Less common: `TRUST_PROXY_HOPS`, `PYTHON_BIN`, `SETTINGS_FILE`, `TTS_HOME`, `VITE_BACKEND_URL`, `VITE_PROXY_TARGET` (see `.env.example`). The bundled nginx accepts uploads up to 25 MB (`frontend/nginx.conf`); raise it there if you raise `MAX_UPLOAD_MB` above that.
 
-The bundled nginx accepts uploads up to 25 MB (`frontend/nginx.conf`); raise it there if you raise `MAX_UPLOAD_MB` above that. The server prints the limits it is really using when it starts.
+---
 
-**Safeguards that are always on:** consent is required (the server rejects requests without it), uploads are validated, requests are rate limited, one synthesis runs at a time with a timeout, and the uploaded sample and generated audio are deleted after every request. Nothing is stored on the server.
+## Limits and Rate Limiting
 
-## API
+| Limit | Default | Applies to |
+|-------|---------|------------|
+| **Request rate** | 5 per minute | `/api/clone-voice`, `/api/generate-text`, `/api/enhance-text` (shared counter) |
+| **Upload size** | 20 MB | Voice sample |
+| **Text length** | 5000 characters | `text` field and AI-written text |
+| **Prompt length** | 1000 characters | `prompt` for `/api/generate-text` |
+| **Concurrency** | 1 job at a time | The Python worker; other requests wait |
+| **Job timeout** | 600 seconds | Each job, including the first model download |
 
-All endpoints are public. Interactive docs are at **http://localhost:8000/api/docs** (also `/api/docs` on port 5173).
+Behind the bundled nginx all browsers share one rate-limit counter; for several users, raise `RATE_LIMIT_PER_MINUTE`. A job that times out is answered with `500`, the worker is restarted, and queued requests carry on. The server prints the limits it is really using when it starts.
 
-```bash
-# Clone a voice and save the result
-curl -X POST http://localhost:8000/api/clone-voice \
-  -F "voiceSample=@sample.wav" \
-  -F "text=Hello from Echo" \
-  -F "consent=true" \
-  -o cloned_voice.wav
-```
+---
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/clone-voice` | Fields: `voiceSample`, `text`, `consent=true` (all required); optional `language`, `speed` (0.5–2), `expressiveness` (0.1–1), `variation` (0–1.5, ignored by XTTS-v2). Returns a WAV |
-| `POST /api/generate-text`, `/api/enhance-text` | AI text tools (need an OpenRouter key). Return `{ "text": "..." }` |
-| `GET /api/config` | Limits and the active voice model's languages and sliders |
-| `GET`/`PUT /api/settings` | OpenRouter key and model, voice model (`ttsModel`, plus `acceptLicense` for XTTS-v2) |
-| `GET /api/health` | Health check |
-
-Errors return `{ "error": "..." }`. Status `429` means the rate limit was exceeded.
-
-## Local Development
+## Local Development (without Docker)
 
 Needs Node.js 20+, Python 3.10+ and ffmpeg.
 
@@ -173,7 +299,7 @@ cd frontend && npm install && npm run dev    # http://localhost:5173
 
 The dev server proxies `/api` to the backend. `npm run build` typechecks and builds the production bundle.
 
-Layout: `backend/` (Express API, `voice_clone.py` worker, `models.js` voice model profiles) and `frontend/src/` (React app, `Avatar.tsx`, `Settings.tsx`, styles in `index.css`; the design system is in `DESIGN.md`).
+---
 
 ## Troubleshooting
 
@@ -202,6 +328,27 @@ Layout: `backend/` (Express API, `voice_clone.py` worker, `models.js` voice mode
 **"Text generation is not configured".** Add an OpenRouter key in Settings or `.env`.
 
 **CORS errors.** Only when `VITE_BACKEND_URL` points directly at the backend: set `CORS_ORIGIN` to the frontend's origin.
+
+---
+
+## Docker Container Reference
+
+| Service | Image | Ports | Purpose |
+|---------|-------|-------|---------|
+| `frontend` | Built from `frontend/` (`node:20-alpine` build, served by `nginx:alpine`) | `5173:80` | PWA and `/api` proxy |
+| `backend` | Built from `backend/` (`node:20-bookworm-slim` + Python venv with CPU PyTorch) | `8000:8000` | REST API and voice-cloning worker |
+
+| Volume | Mounted at | Purpose |
+|--------|------------|---------|
+| `tts-models` | `/app/models` (backend) | Downloaded voice models and saved Settings, kept across rebuilds |
+
+```bash
+docker compose ps                  # status
+docker compose logs -f backend     # logs
+docker compose down -v             # re-download the voice model from scratch (deletes the cache)
+```
+
+---
 
 ## License
 
